@@ -1,0 +1,18 @@
+[Unit]
+Description=HFT Market Data Feeder
+After=network.target
+
+[Service]
+Type=simple
+User=hft-user
+Group=hft-group
+WorkingDirectory=/opt/hft
+ExecStart=/opt/hft/bin/md_feeder/md_feeder
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hft-md-feeder
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,8 @@
+/var/log/hft/md_feeder.log {
+    size 100k
+    rotate 3
+    create 644 hft-user hft-group
+    copytruncate
+    nocompress
+    notifempty
+}
