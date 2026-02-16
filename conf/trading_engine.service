@@ -1,0 +1,18 @@
+[Unit]
+Description=HFT Trading Engine
+After=network.target
+
+[Service]
+Type=simple
+User=hft-user
+Group=hft-group
+WorkingDirectory=/opt/hft
+ExecStart=/opt/hft/bin/trading_engine/trading_engine
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hft-trading-engine
+
+[Install]
+WantedBy=multi-user.target
