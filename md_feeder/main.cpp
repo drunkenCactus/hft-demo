@@ -1,13 +1,13 @@
+#include <lib/logger.hpp>
+
 #include <boost/beast/core.hpp>
 #include <boost/beast/websocket.hpp>
 #include <boost/beast/ssl.hpp>
 #include <boost/asio.hpp>
 #include <boost/asio/ssl.hpp>
-#include <iostream>
 #include <thread>
 #include <vector>
 #include <mutex>
-#include <fstream>
 #include <atomic>
 #include <chrono>
 #include <rapidjson/document.h>
@@ -22,87 +22,10 @@ using tcp = net::ip::tcp;
 const std::string HOST = "stream.binance.com";
 const std::string PORT = "9443";
 const std::string TARGET = "/ws/btcusdt@depth5@100ms";
+const std::string LOGFILE_PATH = "/var/log/hft/md_feeder.log";
 
-enum class LogLevel {
-    DEBUG,
-    INFO,
-    WARNING,
-    ERROR
-};
-
-struct TypeEndl {};
-constexpr TypeEndl Endl;
-
-template <LogLevel LEVEL>
-class Logger {
-public:
-    Logger() {
-        Open();
-    }
-
-    ~Logger() {
-        Close();
-    }
-
-    template <typename T>
-    Logger& operator<<(const T& data) {
-        std::lock_guard<std::mutex> lock(log_mutex_);
-        if (!log_file_.is_open()) {
-            return *this;
-        }
-        if (needs_prefix_) {
-            WriteLevelPrefix();
-        }
-        log_file_ << data;
-        return *this;
-    }
-
-    Logger& operator<<(const TypeEndl&) {
-        std::lock_guard<std::mutex> lock(log_mutex_);
-        if (!log_file_.is_open()) {
-            return *this;
-        }
-        log_file_ << std::endl;
-        needs_prefix_ = true;
-        return *this;
-    }
-
-private:
-    void WriteLevelPrefix() {
-        if constexpr (LEVEL == LogLevel::DEBUG) {
-            log_file_ << "[DEBUG] ";
-        } else if constexpr (LEVEL == LogLevel::INFO) {
-            log_file_ << "[INFO] ";
-        } else if constexpr (LEVEL == LogLevel::WARNING) {
-            log_file_ << "[WARNING] ";
-        } else if constexpr (LEVEL == LogLevel::ERROR) {
-            log_file_ << "[ERROR] ";
-        }
-        needs_prefix_ = false;
-    }
-
-    void Open() {
-        std::lock_guard<std::mutex> lock(log_mutex_);
-        log_file_.open(log_file_path_, std::ios::app);
-        needs_prefix_ = true;
-    }
-
-    void Close() {
-        std::lock_guard<std::mutex> lock(log_mutex_);
-        if (log_file_.is_open()) {
-            log_file_.close();
-        }
-    }
-
-private:
-    std::mutex log_mutex_;
-    std::ofstream log_file_;
-    bool needs_prefix_ = true;
-    const std::string log_file_path_ = "/var/log/hft/md_feeder.log";
-};
-
-Logger<LogLevel::INFO> LOG_INFO;
-Logger<LogLevel::ERROR> LOG_ERROR;
+Logger<LogLevel::INFO> LOG_INFO(LOGFILE_PATH);
+Logger<LogLevel::ERROR> LOG_ERROR(LOGFILE_PATH);
 
 struct OrderBook {
     std::vector<std::pair<double, double>> bids, asks;

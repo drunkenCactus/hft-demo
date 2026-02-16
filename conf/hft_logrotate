@@ -6,3 +6,12 @@
     nocompress
     notifempty
 }
+
+/var/log/hft/trading_engine.log {
+    size 100k
+    rotate 3
+    create 644 hft-user hft-group
+    copytruncate
+    nocompress
+    notifempty
+}
