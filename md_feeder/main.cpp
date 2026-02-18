@@ -1,16 +1,19 @@
 #include <lib/logger.hpp>
+#include <lib/shared_memory.hpp>
 
+#include <boost/asio.hpp>
+#include <boost/asio/ssl.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/websocket.hpp>
 #include <boost/beast/ssl.hpp>
-#include <boost/asio.hpp>
-#include <boost/asio/ssl.hpp>
-#include <thread>
-#include <vector>
-#include <mutex>
-#include <atomic>
-#include <chrono>
+#include <boost/interprocess/mapped_region.hpp>
+#include <boost/interprocess/shared_memory_object.hpp>
+
 #include <rapidjson/document.h>
+
+#include <chrono>
+#include <mutex>
+#include <vector>
 
 namespace beast = boost::beast;
 namespace websocket = beast::websocket;
@@ -27,62 +30,41 @@ const std::string LOGFILE_PATH = "/var/log/hft/md_feeder.log";
 Logger<LogLevel::INFO> LOG_INFO(LOGFILE_PATH);
 Logger<LogLevel::ERROR> LOG_ERROR(LOGFILE_PATH);
 
-struct OrderBook {
-    std::vector<std::pair<double, double>> bids, asks;
-    std::mutex mtx;
-
-    void update(const rapidjson::Value& bids_arr, const rapidjson::Value& asks_arr) {
-        std::lock_guard<std::mutex> lock(mtx);
-        bids.clear(); asks.clear();
+class OrderBook {
+public:
+    void Update(const rapidjson::Value& bids_arr, const rapidjson::Value& asks_arr) {
+        std::lock_guard<std::mutex> lock(mtx_);
+        bids_.clear(); asks_.clear();
         for (auto& v : bids_arr.GetArray()) {
-            bids.emplace_back(
+            bids_.emplace_back(
                 std::stod(v[0].GetString()),
                 std::stod(v[1].GetString())
             );
         }
         for (auto& v : asks_arr.GetArray()) {
-            asks.emplace_back(
+            asks_.emplace_back(
                 std::stod(v[0].GetString()),
                 std::stod(v[1].GetString())
             );
         }
     }
-    std::pair<double, double> best_bid() {
-        std::lock_guard<std::mutex> lock(mtx);
-        return bids.empty() ? std::make_pair(0.0,0.0) : bids.front();
+    std::pair<double, double> BestBid() {
+        std::lock_guard<std::mutex> lock(mtx_);
+        return bids_.empty() ? std::make_pair(0.0,0.0) : bids_.front();
     }
-    std::pair<double, double> best_ask() {
-        std::lock_guard<std::mutex> lock(mtx);
-        return asks.empty() ? std::make_pair(0.0,0.0) : asks.front();
+
+    std::pair<double, double> BestAsk() {
+        std::lock_guard<std::mutex> lock(mtx_);
+        return asks_.empty() ? std::make_pair(0.0,0.0) : asks_.front();
     }
+
+private:
+    std::vector<std::pair<double, double>> bids_;
+    std::vector<std::pair<double, double>> asks_;
+    std::mutex mtx_;
 };
 
-OrderBook book;
-std::atomic<bool> running{true};
-
-void StrategyLoop() {
-    while (running) {
-        auto [bid_px, bid_qty] = book.best_bid();
-        auto [ask_px, ask_qty] = book.best_ask();
-        if (bid_px == 0 || ask_px == 0) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(20));
-            continue;
-        }
-        double spread = ask_px - bid_px;
-        if (spread >= 0.2) {
-            double buy_price = bid_px + 0.01;
-            double sell_price = ask_px - 0.01;
-            double order_qty = 0.001;
-
-            auto now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-            LOG_INFO << now << ",BUY," << buy_price << "," << order_qty << Endl;
-            LOG_INFO << now << ",SELL," << sell_price << "," << order_qty << Endl;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
-}
-
-void OnWsMessage(const std::string& text) {
+void OnWsMessage(OrderBook& book, const std::string& text, hft::SharedData& shared_data) {
     rapidjson::Document d;
     d.Parse(text.c_str());
     if (d.HasParseError()) {
@@ -90,13 +72,27 @@ void OnWsMessage(const std::string& text) {
         return;
     }
     if (d.HasMember("bids") && d.HasMember("asks")) {
-        book.update(d["bids"], d["asks"]);
+        book.Update(d["bids"], d["asks"]);
+        shared_data.best_bid = book.BestBid();
+        shared_data.best_ask = book.BestAsk();
+        shared_data.ts = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
     }
 }
 
 int main() {
-    LOG_INFO << "Starting MD Feeder!" << Endl;
-    std::thread strategy_thread(StrategyLoop);
+    LOG_INFO << "MD Feeder started!" << Endl;
+
+    boost::interprocess::shared_memory_object::remove(hft::SHARED_MEMORY_NAME);
+    boost::interprocess::shared_memory_object shared_memory(
+        boost::interprocess::create_only,
+        hft::SHARED_MEMORY_NAME,
+        boost::interprocess::read_write
+    );
+    shared_memory.truncate(hft::SHARED_MEMORY_SIZE);
+
+    static_assert(sizeof(hft::SharedData) <= hft::SHARED_MEMORY_SIZE);
+    boost::interprocess::mapped_region region(shared_memory, boost::interprocess::read_write);
+    hft::SharedData* shared_data = new (region.get_address()) hft::SharedData;
 
     net::io_context ioc;
     ssl::context ctx(ssl::context::tlsv12_client);
@@ -119,21 +115,20 @@ int main() {
 
         LOG_INFO << "WebSocket connected!" << Endl;
 
-        while (running) {
+        OrderBook book;
+
+        while (true) {
             beast::flat_buffer buffer;
             ws.read(buffer);
 
             auto msg = beast::buffers_to_string(buffer.data());
-            OnWsMessage(msg);
+            OnWsMessage(book, msg, *shared_data);
         }
 
     } catch (std::exception& e) {
         LOG_ERROR << "Exception: " << e.what() << Endl;
-        running = false;
     }
 
-    running = false;
-    strategy_thread.join();
-    LOG_INFO << "Terminated" << Endl;
+    LOG_INFO << "MD Feeder stopped!" << Endl;
     return 0;
 }
