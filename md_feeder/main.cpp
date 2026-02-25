@@ -64,7 +64,7 @@ private:
     std::mutex mtx_;
 };
 
-void OnWsMessage(OrderBook& book, const std::string& text, hft::SharedData& shared_data) {
+void OnWsMessage(OrderBook& book, const std::string& text, hft::BestBidAskData& shared_data) {
     rapidjson::Document d;
     d.Parse(text.c_str());
     if (d.HasParseError()) {
@@ -90,9 +90,8 @@ int main() {
     );
     shared_memory.truncate(hft::SHARED_MEMORY_SIZE);
 
-    static_assert(sizeof(hft::SharedData) <= hft::SHARED_MEMORY_SIZE);
     boost::interprocess::mapped_region region(shared_memory, boost::interprocess::read_write);
-    hft::SharedData* shared_data = new (region.get_address()) hft::SharedData;
+    hft::BestBidAskRingBuffer* ring_buffer = new (region.get_address()) hft::BestBidAskRingBuffer;
 
     net::io_context ioc;
     ssl::context ctx(ssl::context::tlsv12_client);
@@ -122,7 +121,9 @@ int main() {
             ws.read(buffer);
 
             auto msg = beast::buffers_to_string(buffer.data());
-            OnWsMessage(book, msg, *shared_data);
+            hft::BestBidAskData shared_data;
+            OnWsMessage(book, msg, shared_data);
+            ring_buffer->Write(shared_data);
         }
 
     } catch (std::exception& e) {

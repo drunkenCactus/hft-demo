@@ -1,19 +1,20 @@
 #include <gtest/gtest.h>
 
-#include <lib/shared_memory.hpp>
+#include <lib/ring_buffer.hpp>
 
 #include <cstdint>
 
 using namespace hft;
 
-constexpr uint32_t BUFFER_SIZE = 8;
-constexpr uint32_t CONSUMERS_COUNT = 2;
+constexpr uint32_t CACHE_LINE_SIZE_TEST = 64;
+constexpr uint32_t RING_BUFFER_LENGTH_TEST = 8;
+constexpr uint32_t CONSUMERS_COUNT_TEST = 2;
 
-struct alignas(CACHE_LINE_SIZE) TestData {
+struct alignas(CACHE_LINE_SIZE_TEST) TestData {
     char value;
 };
 
-using TestRingBuffer = RingBuffer<TestData, BUFFER_SIZE, CONSUMERS_COUNT>;
+using TestRingBuffer = RingBuffer<TestData, CACHE_LINE_SIZE_TEST, RING_BUFFER_LENGTH_TEST, CONSUMERS_COUNT_TEST>;
 
 void Consume(
     TestRingBuffer& buffer,
@@ -41,15 +42,25 @@ void Produce(TestRingBuffer& buffer, const std::string& data) {
     }
 }
 
+TEST(RingBuffer, Size) {
+    const uint32_t expected_size = CACHE_LINE_SIZE_TEST * (
+        1                           // head_
+        + CONSUMERS_COUNT_TEST      // tails_
+        + CONSUMERS_COUNT_TEST      // active_consumers_
+        + RING_BUFFER_LENGTH_TEST   // data_
+    );
+    EXPECT_EQ(sizeof(TestRingBuffer), expected_size);
+}
+
 TEST(RingBuffer, AllFastConsumers) {
     TestRingBuffer buffer;
     const std::string data = "c478fy478bcf87ergfw48b7f7ch48hffhewiybfr78ey4378bc487gbci7rghfciucbf3478tr387c";
     bool is_running = true;
 
-    std::vector<std::string> results(CONSUMERS_COUNT, "");
+    std::vector<std::string> results(CONSUMERS_COUNT_TEST, "");
 
     std::vector<std::thread> consumers;
-    for (uint32_t consumer_id = 0; consumer_id < CONSUMERS_COUNT; ++consumer_id) {
+    for (uint32_t consumer_id = 0; consumer_id < CONSUMERS_COUNT_TEST; ++consumer_id) {
         const uint32_t timeout_ms = 10;
         consumers.emplace_back(
             Consume,
@@ -77,11 +88,11 @@ TEST(RingBuffer, DisableLaggingConsumer) {
     const std::string data = "c478fy478bcf87ergfw48b7f7ch48hffhewiybfr78ey4378bc487gbci7rghfciucbf3478tr387c";
     bool is_running = true;
 
-    std::vector<std::string> results(CONSUMERS_COUNT, "");
+    std::vector<std::string> results(CONSUMERS_COUNT_TEST, "");
     std::vector<uint32_t> timeouts_ms = {10, 20};
 
     std::vector<std::thread> consumers;
-    for (uint32_t consumer_id = 0; consumer_id < CONSUMERS_COUNT; ++consumer_id) {
+    for (uint32_t consumer_id = 0; consumer_id < CONSUMERS_COUNT_TEST; ++consumer_id) {
         consumers.emplace_back(
             Consume,
             std::ref(buffer),

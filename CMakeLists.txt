@@ -23,7 +23,7 @@ add_executable(trading_engine
 
 add_executable(run_tests
     tests/main.cpp
-    tests/test_buffer.cpp
+    tests/test_ring_buffer.cpp
 )
 
 target_link_libraries(md_feeder
