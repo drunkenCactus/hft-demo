@@ -6,14 +6,14 @@
 #include <boost/interprocess/shared_memory_object.hpp>
 
 #include <chrono>
-#include <thread>
 
 const std::string LOGFILE_PATH = "/var/log/hft/trading_engine.log";
+constexpr uint32_t CONSUMER_ID = 0;
 
 Logger<LogLevel::INFO> LOG_INFO(LOGFILE_PATH);
 Logger<LogLevel::ERROR> LOG_ERROR(LOGFILE_PATH);
 
-void DoStrategy(const hft::SharedData& shared_data) {
+void DoStrategy(const hft::BestBidAskData& shared_data) {
     auto [bid_px, bid_qty] = shared_data.best_bid;
     auto [ask_px, ask_qty] = shared_data.best_ask;
     if (bid_px == 0 || ask_px == 0) {
@@ -42,11 +42,13 @@ int main(int argc, char *argv[]) {
     );
 
     boost::interprocess::mapped_region region(shared_memory, boost::interprocess::read_only);
-    const hft::SharedData* shared_data = static_cast<const hft::SharedData*>(region.get_address());
+    hft::BestBidAskRingBuffer* ring_buffer = static_cast<hft::BestBidAskRingBuffer*>(region.get_address());
 
     while (true) {
-        DoStrategy(*shared_data);
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        hft::BestBidAskData shared_data;
+        if (ring_buffer->Read(shared_data, CONSUMER_ID)) {
+            DoStrategy(shared_data);
+        }
     }
     LOG_INFO << "Trading Engine stopped!" << Endl;
     return 0;
