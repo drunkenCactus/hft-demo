@@ -80,42 +80,40 @@ void OnWsMessage(OrderBook& book, const std::string& text, hft::BestBidAskData& 
 }
 
 int main() {
-    LOG_INFO << "MD Feeder started!" << Endl;
-
-    boost::interprocess::shared_memory_object::remove(hft::SHARED_MEMORY_NAME);
-    boost::interprocess::shared_memory_object shared_memory(
-        boost::interprocess::create_only,
-        hft::SHARED_MEMORY_NAME,
-        boost::interprocess::read_write
-    );
-    shared_memory.truncate(hft::SHARED_MEMORY_SIZE);
-
-    boost::interprocess::mapped_region region(shared_memory, boost::interprocess::read_write);
-    hft::BestBidAskRingBuffer* ring_buffer = new (region.get_address()) hft::BestBidAskRingBuffer;
-
-    net::io_context ioc;
-    ssl::context ctx(ssl::context::tlsv12_client);
-
-    ctx.set_verify_mode(ssl::verify_none);
+    ProcessWatcher watcher(LOG_INFO, "MD Feeder");
 
     try {
+        boost::interprocess::shared_memory_object::remove(hft::SHARED_MEMORY_NAME);
+        boost::interprocess::shared_memory_object shared_memory(
+            boost::interprocess::create_only,
+            hft::SHARED_MEMORY_NAME,
+            boost::interprocess::read_write
+        );
+        shared_memory.truncate(hft::SHARED_MEMORY_SIZE);
+        boost::interprocess::mapped_region region(shared_memory, boost::interprocess::read_write);
+        assert(reinterpret_cast<uintptr_t>(region.get_address()) % hft::CACHE_LINE_SIZE == 0);
+        // prevent flushing on disk
+        mlock(region.get_address(), region.get_size());
+
+        hft::BestBidAskRingBuffer* ring_buffer = new (region.get_address()) hft::BestBidAskRingBuffer;
+        assert(ring_buffer != nullptr);
+
+        net::io_context ioc;
+        ssl::context ctx(ssl::context::tlsv12_client);
+        ctx.set_verify_mode(ssl::verify_none);
+
         tcp::resolver resolver(ioc);
         auto const results = resolver.resolve(HOST, PORT);
 
         beast::ssl_stream<beast::tcp_stream> stream(ioc, ctx);
-
         beast::get_lowest_layer(stream).connect(results);
-
         stream.handshake(ssl::stream_base::client);
 
         websocket::stream<beast::ssl_stream<beast::tcp_stream>> ws(std::move(stream));
-
         ws.handshake(HOST, TARGET);
-
         LOG_INFO << "WebSocket connected!" << Endl;
 
         OrderBook book;
-
         while (true) {
             beast::flat_buffer buffer;
             ws.read(buffer);
@@ -126,10 +124,10 @@ int main() {
             ring_buffer->Write(shared_data);
         }
 
-    } catch (std::exception& e) {
+    } catch (const std::exception& e) {
         LOG_ERROR << "Exception: " << e.what() << Endl;
+        return 1;
     }
 
-    LOG_INFO << "MD Feeder stopped!" << Endl;
     return 0;
 }

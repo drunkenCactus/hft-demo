@@ -33,23 +33,35 @@ void DoStrategy(const hft::BestBidAskData& shared_data) {
 }
 
 int main(int argc, char *argv[]) {
-    LOG_INFO << "Trading Engine started!" << Endl;
+    ProcessWatcher watcher(LOG_INFO, "Trading Engine");
 
-    boost::interprocess::shared_memory_object shared_memory(
-        boost::interprocess::open_only,
-        hft::SHARED_MEMORY_NAME,
-        boost::interprocess::read_only
-    );
+    try {
+        boost::interprocess::shared_memory_object shared_memory(
+            boost::interprocess::open_only,
+            hft::SHARED_MEMORY_NAME,
+            boost::interprocess::read_write
+        );
+        boost::interprocess::mapped_region region(shared_memory, boost::interprocess::read_write);
+        assert(reinterpret_cast<uintptr_t>(region.get_address()) % hft::CACHE_LINE_SIZE == 0);
+        // prevent flushing on disk
+        mlock(region.get_address(), region.get_size());
 
-    boost::interprocess::mapped_region region(shared_memory, boost::interprocess::read_only);
-    hft::BestBidAskRingBuffer* ring_buffer = static_cast<hft::BestBidAskRingBuffer*>(region.get_address());
+        hft::BestBidAskRingBuffer* ring_buffer = static_cast<hft::BestBidAskRingBuffer*>(region.get_address());
+        assert(ring_buffer != nullptr);
 
-    while (true) {
-        hft::BestBidAskData shared_data;
-        if (ring_buffer->Read(shared_data, CONSUMER_ID)) {
-            DoStrategy(shared_data);
+        ring_buffer->ResetConsumer(CONSUMER_ID);
+
+        while (true) {
+            hft::BestBidAskData shared_data;
+            if (ring_buffer->Read(shared_data, CONSUMER_ID)) {
+                DoStrategy(shared_data);
+            }
         }
+
+    } catch (const std::exception& e) {
+        LOG_ERROR << "Exception: " << e.what() << Endl;
+        return 1;
     }
-    LOG_INFO << "Trading Engine stopped!" << Endl;
+
     return 0;
 }

@@ -213,11 +213,16 @@ deploy() {
 
     # 5. Запускаем сервисы
     systemctl daemon-reload
-    for app_name in "${APP_NAMES[@]}"; do
-        log_info "  → Запускаем сервис $app_name..."
-        systemctl enable "$app_name"
-        systemctl start "$app_name"
-    done
+
+    log_info "  → Запускаем md_feeder..."
+    systemctl enable md_feeder
+    systemctl start md_feeder
+
+    sleep 1
+
+    log_info "  → Запускаем trading_engine..."
+    systemctl enable trading_engine
+    systemctl start trading_engine
 
     log_success "Деплой завершен"
 }
