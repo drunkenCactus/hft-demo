@@ -34,7 +34,7 @@ public:
         head_.value.store(new_head, std::memory_order_release);
     }
 
-    bool Read(Data& data, const uint32_t consumer) noexcept {
+    [[nodiscard]] bool Read(Data& data, const uint32_t consumer) noexcept {
         if (!active_consumers_[consumer].value.load(std::memory_order_acquire)) {
             // consumer is disabled
             return false;
@@ -49,6 +49,12 @@ public:
         data = data_[new_tail];
         tails_[consumer].value.store(new_tail, std::memory_order_release);
         return true;
+    }
+
+    void ResetConsumer(const uint32_t consumer) noexcept {
+        const uint32_t head = head_.value.load(std::memory_order_acquire);
+        tails_[consumer].value.store(head, std::memory_order_release);
+        active_consumers_[consumer].value.store(true, std::memory_order_release);
     }
 
 private:

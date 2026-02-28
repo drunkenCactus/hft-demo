@@ -86,3 +86,22 @@ private:
     bool needs_prefix_ = true;
     const std::string log_file_path_;
 };
+
+template <LogLevel LEVEL>
+class ProcessWatcher {
+public:
+    ProcessWatcher(Logger<LEVEL>& logger, const char* const process_name)
+        : logger_(logger)
+        , process_name_(process_name)
+    {
+        logger_ << process_name_ << " started!" << Endl;
+    }
+
+    ~ProcessWatcher() {
+        logger_ << process_name_ << " aborted!" << Endl;
+    }
+
+private:
+    Logger<LEVEL>& logger_;
+    const char* const process_name_;
+};
