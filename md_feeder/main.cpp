@@ -1,3 +1,4 @@
+#include <lib/interprocess.hpp>
 #include <lib/logger.hpp>
 #include <lib/shared_memory.hpp>
 
@@ -6,8 +7,6 @@
 #include <boost/beast/core.hpp>
 #include <boost/beast/websocket.hpp>
 #include <boost/beast/ssl.hpp>
-#include <boost/interprocess/mapped_region.hpp>
-#include <boost/interprocess/shared_memory_object.hpp>
 
 #include <rapidjson/document.h>
 
@@ -83,20 +82,12 @@ int main() {
     ProcessWatcher watcher(LOG_INFO, "MD Feeder");
 
     try {
-        boost::interprocess::shared_memory_object::remove(hft::SHARED_MEMORY_NAME);
-        boost::interprocess::shared_memory_object shared_memory(
-            boost::interprocess::create_only,
-            hft::SHARED_MEMORY_NAME,
-            boost::interprocess::read_write
-        );
-        shared_memory.truncate(hft::SHARED_MEMORY_SIZE);
-        boost::interprocess::mapped_region region(shared_memory, boost::interprocess::read_write);
-        assert(reinterpret_cast<uintptr_t>(region.get_address()) % hft::CACHE_LINE_SIZE == 0);
-        // prevent flushing on disk
-        mlock(region.get_address(), region.get_size());
-
-        hft::BestBidAskRingBuffer* ring_buffer = new (region.get_address()) hft::BestBidAskRingBuffer;
-        assert(ring_buffer != nullptr);
+        hft::SharedMemory<
+            hft::MemoryRole::CREATE_ONLY,
+            hft::CACHE_LINE_SIZE,
+            hft::BestBidAskRingBuffer
+        > shared_memory(hft::SHARED_MEMORY_NAME);
+        auto [ring_buffer] = shared_memory.GetObjects();
 
         net::io_context ioc;
         ssl::context ctx(ssl::context::tlsv12_client);

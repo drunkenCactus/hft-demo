@@ -24,7 +24,9 @@ add_executable(trading_engine
 
 add_executable(run_tests
     tests/main.cpp
+    tests/test_objects_handler.cpp
     tests/test_ring_buffer.cpp
+    tests/test_shared_memory.cpp
 )
 
 target_link_libraries(md_feeder
