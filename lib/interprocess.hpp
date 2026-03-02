@@ -8,7 +8,6 @@
 namespace hft {
 
 const char* const SHARED_MEMORY_NAME = "order_book";
-constexpr uint32_t SHARED_MEMORY_SIZE = 4096;
 constexpr uint32_t CACHE_LINE_SIZE = 64;
 constexpr uint32_t RING_BUFFER_LENGTH = 32;
 constexpr uint32_t CONSUMERS_COUNT = 1;
@@ -25,10 +24,5 @@ using BestBidAskRingBuffer = RingBuffer<
     RING_BUFFER_LENGTH,
     CONSUMERS_COUNT
 >;
-
-static_assert(
-    sizeof(BestBidAskRingBuffer) <= SHARED_MEMORY_SIZE,
-    "Ring buffer total size should`t be greater than shared memory size"
-);
 
 }  // namespace hft
