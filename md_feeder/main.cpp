@@ -1,6 +1,5 @@
-#include <lib/interprocess.hpp>
 #include <lib/logger.hpp>
-#include <lib/shared_memory.hpp>
+#include <lib/interprocess/interprocess.hpp>
 
 #include <boost/asio.hpp>
 #include <boost/asio/ssl.hpp>
@@ -63,7 +62,7 @@ private:
     std::mutex mtx_;
 };
 
-void OnWsMessage(OrderBook& book, const std::string& text, hft::BestBidAskData& shared_data) {
+void OnWsMessage(OrderBook& book, const std::string& text, hft::BestBidAskRingBufferData& shared_data) {
     rapidjson::Document d;
     d.Parse(text.c_str());
     if (d.HasParseError()) {
@@ -82,11 +81,7 @@ int main() {
     ProcessWatcher watcher(LOG_INFO, "MD Feeder");
 
     try {
-        hft::SharedMemory<
-            hft::MemoryRole::CREATE_ONLY,
-            hft::CACHE_LINE_SIZE,
-            hft::BestBidAskRingBuffer
-        > shared_memory(hft::SHARED_MEMORY_NAME);
+        hft::ShmMdFeederToTradingEngine shared_memory(hft::SHM_NAME_MD_FEEDER_TO_TRADING_ENGINE, hft::MemoryRole::CREATE_ONLY);
         auto [ring_buffer] = shared_memory.GetObjects();
 
         net::io_context ioc;
@@ -110,7 +105,7 @@ int main() {
             ws.read(buffer);
 
             auto msg = beast::buffers_to_string(buffer.data());
-            hft::BestBidAskData shared_data;
+            hft::BestBidAskRingBufferData shared_data;
             OnWsMessage(book, msg, shared_data);
             ring_buffer->Write(shared_data);
         }

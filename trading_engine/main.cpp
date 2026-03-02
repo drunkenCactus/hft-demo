@@ -1,6 +1,5 @@
-#include <lib/interprocess.hpp>
 #include <lib/logger.hpp>
-#include <lib/shared_memory.hpp>
+#include <lib/interprocess/interprocess.hpp>
 
 #include <chrono>
 
@@ -10,7 +9,7 @@ constexpr uint32_t CONSUMER_ID = 0;
 Logger<LogLevel::INFO> LOG_INFO(LOGFILE_PATH);
 Logger<LogLevel::ERROR> LOG_ERROR(LOGFILE_PATH);
 
-void DoStrategy(const hft::BestBidAskData& shared_data) {
+void DoStrategy(const hft::BestBidAskRingBufferData& shared_data) {
     auto [bid_px, bid_qty] = shared_data.best_bid;
     auto [ask_px, ask_qty] = shared_data.best_ask;
     if (bid_px == 0 || ask_px == 0) {
@@ -33,17 +32,13 @@ int main(int argc, char *argv[]) {
     ProcessWatcher watcher(LOG_INFO, "Trading Engine");
 
     try {
-        hft::SharedMemory<
-            hft::MemoryRole::OPEN_ONLY,
-            hft::CACHE_LINE_SIZE,
-            hft::BestBidAskRingBuffer
-        > shared_memory(hft::SHARED_MEMORY_NAME);
+        hft::ShmMdFeederToTradingEngine shared_memory(hft::SHM_NAME_MD_FEEDER_TO_TRADING_ENGINE, hft::MemoryRole::OPEN_ONLY);
         auto [ring_buffer] = shared_memory.GetObjects();
 
         ring_buffer->ResetConsumer(CONSUMER_ID);
 
         while (true) {
-            hft::BestBidAskData shared_data;
+            hft::BestBidAskRingBufferData shared_data;
             if (ring_buffer->Read(shared_data, CONSUMER_ID)) {
                 DoStrategy(shared_data);
             }

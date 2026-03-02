@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include <lib/ring_buffer.hpp>
+#include <lib/interprocess/ring_buffer.hpp>
 
 #include <cstdint>
 

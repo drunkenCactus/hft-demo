@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include <lib/objects_handler.hpp>
+#include <lib/interprocess/objects_handler.hpp>
 
 using namespace hft;
 
@@ -18,8 +18,7 @@ struct Object13b {
     char value[13];
 };
 
-using ObjectsHandlerCreate = ObjectsHandler<MemoryRole::CREATE_ONLY, ALIGNMENT, Object4b, Object8b, Object13b>;
-using ObjectsHandlerOpen = ObjectsHandler<MemoryRole::OPEN_ONLY, ALIGNMENT, Object4b, Object8b, Object13b>;
+using ObjectsHandlerTest = ObjectsHandler<ALIGNMENT, Object4b, Object8b, Object13b>;
 
 TEST(ObjectsHandler, Sizes) {
     EXPECT_EQ(sizeof(Object4b), 4);
@@ -28,14 +27,14 @@ TEST(ObjectsHandler, Sizes) {
     // Object4b: 8 bytes (4 sizeof + 4 padding)
     // Object8b: 8 bytes (8 sizeof + 0 padding)
     // Object13b: 16 bytes (13 sizeof + 3 padding)
-    EXPECT_EQ(ObjectsHandlerCreate::DataSize(), 32);
+    EXPECT_EQ(ObjectsHandlerTest::DataSize(), 32);
 }
 
 TEST(ObjectsHandler, OpenCreated) {
-    void* const buffer = malloc(ObjectsHandlerCreate::DataSize());
+    void* const buffer = malloc(ObjectsHandlerTest::DataSize());
 
     {
-        ObjectsHandlerCreate create_handler(buffer);
+        ObjectsHandlerTest create_handler(MemoryRole::CREATE_ONLY, buffer);
         auto [object_4b, object_8b, object_13b] = create_handler.GetObjects();
 
         object_4b->value = 42;
@@ -43,7 +42,7 @@ TEST(ObjectsHandler, OpenCreated) {
     }
 
     {
-        ObjectsHandlerOpen open_handler(buffer);
+        ObjectsHandlerTest open_handler(MemoryRole::OPEN_ONLY, buffer);
         auto [object_4b, object_8b, object_13b] = open_handler.GetObjects();
 
         EXPECT_EQ(object_4b->value, 42);
