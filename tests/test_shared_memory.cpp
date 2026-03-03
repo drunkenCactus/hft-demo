@@ -4,24 +4,74 @@
 
 using namespace hft;
 
-const char* const SHARED_MEMORY_NAME = "shm_test";
 constexpr uint32_t ALIGNMENT = 8;
 
-struct SharedInt {
+struct Object4b {
     uint32_t value;
 };
 
-struct SharedChar {
+struct Object8b {
+    uint32_t value[2];
+};
+
+struct Object13b {
+    char value[13];
+};
+
+struct alignas(ALIGNMENT) SharedInt {
+    uint32_t value;
+};
+
+struct alignas(ALIGNMENT) SharedChar {
     char value;
 };
 
+TEST(SharedMemory, Sizes) {
+    {
+        uint32_t size = GetSizeWithPadding<ALIGNMENT, Object4b>();
+        EXPECT_EQ(size, 8);
+    }
+    {
+        uint32_t size = GetSizeWithPadding<ALIGNMENT, Object8b>();
+        EXPECT_EQ(size, 8);
+    }
+    {
+        uint32_t size = GetSizeWithPadding<ALIGNMENT, Object13b>();
+        EXPECT_EQ(size, 16);
+    }
+    {
+        uint32_t size = GetObjectsSize<ALIGNMENT, Object4b, Object8b, Object13b>();
+        EXPECT_EQ(size, 32);
+    }
+}
+
+TEST(SharedMemory, FetchCreated) {
+    uint32_t size = GetObjectsSize<ALIGNMENT, SharedInt, SharedChar>();
+    void* const buffer = malloc(size);
+
+    {
+        auto [shared_int, shared_char] = CreateObjectsInBuffer<ALIGNMENT, SharedInt, SharedChar>(buffer);
+        shared_int->value = 42;
+        shared_char->value = 'h';
+    }
+
+    {
+        auto [shared_int, shared_char] = FetchObjectsFromBuffer<ALIGNMENT, SharedInt, SharedChar>(buffer);
+        EXPECT_EQ(shared_int->value, 42);
+        EXPECT_EQ(shared_char->value, 'h');
+    }
+
+    free(buffer);
+}
+
+const char* const SHARED_MEMORY_NAME = "shm_test";
 using SharedMemoryTest = SharedMemory<ALIGNMENT, SharedInt, SharedChar>;
 
 inline void WaitForProducer() {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
 }
 
-class SharedMemoryTestuite : public ::testing::Test {
+class SharedMemoryIpc : public ::testing::Test {
 protected:
     void SetUp() override {}
     
@@ -30,7 +80,7 @@ protected:
     }
 };
 
-TEST_F(SharedMemoryTestuite, ReadWritten) {
+TEST_F(SharedMemoryIpc, ReadWritten) {
     int pid = fork();
     ASSERT_NE(-1, pid) << strerror(errno);
 
@@ -51,14 +101,14 @@ TEST_F(SharedMemoryTestuite, ReadWritten) {
     EXPECT_EQ(shared_char->value, 'h');
 }
 
-TEST_F(SharedMemoryTestuite, Exception_FailedToOpenSharedMemory) {
+TEST_F(SharedMemoryIpc, Exception_FailedToOpenSharedMemory) {
     EXPECT_THROW(
         SharedMemoryTest shared_memory(SHARED_MEMORY_NAME, MemoryRole::OPEN_ONLY),
-        FailedToOpenSharedMemory
+        std::exception
     );
 }
 
-TEST_F(SharedMemoryTestuite, Exception_FailedToMapRegion) {
+TEST_F(SharedMemoryIpc, Exception_FailedToMapRegion) {
     int pid = fork();
     ASSERT_NE(-1, pid) << strerror(errno);
 
@@ -76,11 +126,11 @@ TEST_F(SharedMemoryTestuite, Exception_FailedToMapRegion) {
 
     EXPECT_THROW(
         SharedMemoryTest shared_memory(SHARED_MEMORY_NAME, MemoryRole::OPEN_ONLY),
-        FailedToMapRegion
+        std::exception
     );
 }
 
-TEST_F(SharedMemoryTestuite, Exception_SharedMemoryIsEmpty) {
+TEST_F(SharedMemoryIpc, Exception_SharedMemoryIsEmpty) {
     int pid = fork();
     ASSERT_NE(-1, pid) << strerror(errno);
 
@@ -99,18 +149,18 @@ TEST_F(SharedMemoryTestuite, Exception_SharedMemoryIsEmpty) {
 
     EXPECT_THROW(
         SharedMemoryTest shared_memory(SHARED_MEMORY_NAME, MemoryRole::OPEN_ONLY),
-        SharedMemoryIsEmpty
+        std::exception
     );
 }
 
-TEST_F(SharedMemoryTestuite, CheckHeartbeart) {
+TEST_F(SharedMemoryIpc, CheckHeartbeart) {
     int pid = fork();
     ASSERT_NE(-1, pid) << strerror(errno);
 
     if (pid == 0) {
         // producer logic
         SharedMemoryTest shared_memory(SHARED_MEMORY_NAME, MemoryRole::CREATE_ONLY);
-        shared_memory.UpdateHeartbeart();
+        shared_memory.UpdateHeartbeat();
         _exit(0);
     }
 

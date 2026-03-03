@@ -81,6 +81,7 @@ int main() {
     ProcessWatcher watcher(LOG_INFO, "MD Feeder");
 
     try {
+        hft::RemoveSharedMemory(hft::SHM_NAME_MD_FEEDER_TO_TRADING_ENGINE);
         hft::ShmMdFeederToTradingEngine shared_memory(hft::SHM_NAME_MD_FEEDER_TO_TRADING_ENGINE, hft::MemoryRole::CREATE_ONLY);
         auto [ring_buffer] = shared_memory.GetObjects();
 
