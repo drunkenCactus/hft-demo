@@ -12,7 +12,7 @@ template <
     uint32_t ConsumersCount
 > class alignas(Alignment) RingBuffer {
 public:
-    RingBuffer() {
+    RingBuffer() noexcept {
         head_.value = 0;
         for (uint32_t i = 0; i < ConsumersCount; ++i) {
             tails_[i].value = 0;
@@ -80,6 +80,7 @@ private:
         static_assert(std::atomic<T>::is_always_lock_free);
     };
 
+private:
     AlignedAtomic<uint32_t> head_;
     AlignedAtomic<uint32_t> tails_[ConsumersCount];
     AlignedAtomic<bool> active_consumers_[ConsumersCount];
@@ -90,8 +91,28 @@ private:
         "BufferLength must be power of 2"
     );
     static_assert(
+        ConsumersCount > 0,
+        "ConsumersCount must be greater than zero"
+    );
+    static_assert(
+        Alignment > 0,
+        "Alignment must be greater than zero"
+    );
+    static_assert(
         alignof(Data) == Alignment,
         "Data must be aligned with Alignment"
+    );
+    static_assert(
+        std::is_nothrow_default_constructible_v<Data>,
+        "Data must be nothrow default constructible"
+    );
+    static_assert(
+        std::is_copy_assignable_v<Data>,
+        "Data must be copy assignable"
+    );
+    static_assert(
+        std::is_trivially_destructible_v<Data>,
+        "Data must be trivially destructible"
     );
 };
 
