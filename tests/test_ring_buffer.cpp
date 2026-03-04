@@ -87,6 +87,7 @@ TEST(RingBuffer, MultiConsumers) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
         }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
         is_stopped.store(true, std::memory_order_release);
     });
 

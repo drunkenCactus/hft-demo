@@ -155,12 +155,6 @@ build_applications() {
     mkdir -p "$BUILD_DIR"
     cd "$BUILD_DIR"
 
-    # Очистка предыдущей сборки
-    if [[ -f "CMakeCache.txt" ]]; then
-        log_info "  → очистка предыдущей сборки..."
-        make clean 2>/dev/null || true
-    fi
-
     # CMake конфигурация
     log_info "  → запуск cmake..."
     cmake "$SRC_DIR"
