@@ -12,4 +12,11 @@ struct alignas(Alignment) BestBidAskData {
     uint64_t ts = 0;
 };
 
+template <uint32_t Alignment>
+struct alignas(Alignment) ObserverData {
+    uint64_t timestamp_ns = 0;
+    constexpr static uint32_t message_size = 56;
+    char message[message_size];
+};
+
 }  // namespace hft
