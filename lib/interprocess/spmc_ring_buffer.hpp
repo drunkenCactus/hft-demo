@@ -1,6 +1,7 @@
 #pragma once
 
-#include <atomic>
+#include <lib/interprocess/ring_buffer_common.hpp>
+
 #include <cstdint>
 
 namespace hft {
@@ -10,25 +11,23 @@ template <
     uint32_t Alignment,
     uint32_t BufferLength,
     uint32_t ConsumersCount
-> class alignas(Alignment) RingBuffer {
+> class alignas(Alignment) SpmcRingBuffer {
 public:
-    RingBuffer() noexcept {
-        head_.value = 0;
+    SpmcRingBuffer() noexcept {
         for (uint32_t i = 0; i < ConsumersCount; ++i) {
-            tails_[i].value = 0;
-            active_consumers_[i].value = true;
+            active_consumers_[i].value.store(true, std::memory_order_release);
         }
     }
 
-    RingBuffer(const RingBuffer& other) = delete;
-    RingBuffer(RingBuffer&& other) = delete;
-    RingBuffer& operator=(const RingBuffer& other) = delete;
-    RingBuffer& operator=(RingBuffer&& other) = delete;
-    ~RingBuffer() = default;
+    SpmcRingBuffer(const SpmcRingBuffer& other) = delete;
+    SpmcRingBuffer(SpmcRingBuffer&& other) = delete;
+    SpmcRingBuffer& operator=(const SpmcRingBuffer& other) = delete;
+    SpmcRingBuffer& operator=(SpmcRingBuffer&& other) = delete;
+    ~SpmcRingBuffer() = default;
 
     void Write(const Data& data) noexcept {
         const uint32_t current_head = head_.value.load(std::memory_order_relaxed);
-        const uint32_t new_head = Increment(current_head);
+        const uint32_t new_head = Increment<BufferLength>(current_head);
         DisableLaggingConsumers(new_head);
         data_[new_head] = data;
         head_.value.store(new_head, std::memory_order_release);
@@ -45,7 +44,7 @@ public:
             // nothing to read
             return false;
         }
-        const uint32_t new_tail = Increment(current_tail);
+        const uint32_t new_tail = Increment<BufferLength>(current_tail);
         data = data_[new_tail];
         tails_[consumer].value.store(new_tail, std::memory_order_release);
         return true;
@@ -58,11 +57,6 @@ public:
     }
 
 private:
-    static uint32_t Increment(const uint32_t current) noexcept {
-        // optimization of (current + 1) % BufferLength
-        return (current + 1) & (BufferLength - 1);
-    }
-
     void DisableLaggingConsumers(const uint32_t new_head) noexcept {
         for (uint32_t i = 0; i < ConsumersCount; ++i) {
             const uint32_t tail = tails_[i].value.load(std::memory_order_acquire);
@@ -74,22 +68,11 @@ private:
     }
 
 private:
-    template <typename T>
-    struct alignas(Alignment) AlignedAtomic {
-        std::atomic<T> value;
-        static_assert(std::atomic<T>::is_always_lock_free);
-    };
-
-private:
-    AlignedAtomic<uint32_t> head_;
-    AlignedAtomic<uint32_t> tails_[ConsumersCount];
-    AlignedAtomic<bool> active_consumers_[ConsumersCount];
+    AlignedAtomic<Alignment, uint32_t> head_;
+    AlignedAtomic<Alignment, uint32_t> tails_[ConsumersCount];
+    AlignedAtomic<Alignment, bool> active_consumers_[ConsumersCount];
     Data data_[BufferLength];
 
-    static_assert(
-        (BufferLength != 0) && ((BufferLength & (BufferLength - 1)) == 0),
-        "BufferLength must be power of 2"
-    );
     static_assert(
         ConsumersCount > 0,
         "ConsumersCount must be greater than zero"

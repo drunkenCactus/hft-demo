@@ -1,10 +1,9 @@
 #include <gtest/gtest.h>
+#include <tests/utils.hpp>
 
-#include <lib/interprocess/ring_buffer.hpp>
-#include <lib/interprocess/shared_memory.hpp>
+#include <lib/interprocess/spmc_ring_buffer.hpp>
 
 #include <cstdint>
-#include <random>
 
 using namespace hft;
 
@@ -16,25 +15,10 @@ struct alignas(ALIGNMENT) RingBufferData {
     char marker2;
 };
 
-std::string GenerateRandomString(const uint32_t length) {
-    const std::string characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-
-    static std::random_device rd;
-    static std::mt19937 generator(rd());
-    static std::uniform_int_distribution<> distribution(0, characters.size() - 1);
-
-    std::string result;
-    result.reserve(length);
-    for (uint32_t i = 0; i < length; ++i) {
-        result += characters[distribution(generator)];
-    }
-    return result;
-}
-
-TEST(RingBuffer, Size) {
+TEST(SpmcRingBuffer, Size) {
     constexpr uint32_t consumers_count = 2;
     constexpr uint32_t buffer_length = 8;
-    using RingBufferTest = RingBuffer<RingBufferData, ALIGNMENT, buffer_length, consumers_count>;
+    using RingBufferTest = SpmcRingBuffer<RingBufferData, ALIGNMENT, buffer_length, consumers_count>;
 
     const uint32_t expected_size
         = 1 * ALIGNMENT                             // head_
@@ -44,15 +28,15 @@ TEST(RingBuffer, Size) {
     EXPECT_EQ(sizeof(RingBufferTest), expected_size);
 }
 
-TEST(RingBuffer, MultiConsumers) {
+TEST(SpmcRingBuffer, ReadWritten) {
     constexpr uint32_t consumers_count = 2;
     constexpr uint32_t buffer_length = 1024;
-    using RingBufferTest = RingBuffer<RingBufferData, ALIGNMENT, buffer_length, consumers_count>;
+    using RingBufferTest = SpmcRingBuffer<RingBufferData, ALIGNMENT, buffer_length, consumers_count>;
     RingBufferTest buffer;
 
     const uint32_t data_length = 10000;
-    const std::string data1 = GenerateRandomString(data_length);
-    const std::string data2 = GenerateRandomString(data_length);
+    const std::string data1 = test::GenerateRandomString(data_length);
+    const std::string data2 = test::GenerateRandomString(data_length);
 
     std::atomic<bool> is_stopped{false};
     std::atomic<uint32_t> read_count{0};
@@ -100,10 +84,10 @@ TEST(RingBuffer, MultiConsumers) {
     EXPECT_EQ(corrupted_count.load(), 0);
 }
 
-TEST(RingBuffer, DisableLaggingConsumer) {
+TEST(SpmcRingBuffer, DisableLaggingConsumer) {
     constexpr uint32_t consumers_count = 1;
     constexpr uint32_t buffer_length = 4;
-    using RingBufferTest = RingBuffer<RingBufferData, ALIGNMENT, buffer_length, consumers_count>;
+    using RingBufferTest = SpmcRingBuffer<RingBufferData, ALIGNMENT, buffer_length, consumers_count>;
     RingBufferTest buffer;
 
     auto write = [&buffer](const std::string& data) {
@@ -132,71 +116,4 @@ TEST(RingBuffer, DisableLaggingConsumer) {
     buffer.ResetConsumer(0);
     write("baz");
     EXPECT_EQ(read(), "baz");
-}
-
-const char* const SHM_NAME = "shm_test";
-
-class RingBufferIpc : public ::testing::Test {
-protected:
-    void SetUp() override {}
-    
-    void TearDown() override {
-        boost::interprocess::shared_memory_object::remove(SHM_NAME);
-    }
-};
-
-TEST_F(RingBufferIpc, IpcSingleConsumer) {
-    constexpr uint32_t consumers_count = 1;
-    constexpr uint32_t buffer_length = 1024;
-    using RingBufferTest = RingBuffer<RingBufferData, ALIGNMENT, buffer_length, consumers_count>;
-    using SharedMemoryTest = SharedMemory<ALIGNMENT, RingBufferTest>;
-
-    const uint32_t data_length = 10000;
-    const std::string data1 = GenerateRandomString(data_length);
-    const std::string data2 = GenerateRandomString(data_length);
-
-    int pid = fork();
-    ASSERT_NE(-1, pid) << strerror(errno);
-
-    if (pid == 0) {
-        // producer logic
-        SharedMemoryTest shm(SHM_NAME, MemoryRole::CREATE_ONLY);
-        auto [buffer] = shm.GetObjects();
-        RingBufferData buffer_data;
-        for (uint64_t i = 0; i < data_length; ++i) {
-            buffer_data.marker1 = data1[i];
-            buffer_data.marker2 = data2[i];
-            buffer->Write(buffer_data);
-            shm.UpdateHeartbeat();
-            if (i % (buffer_length / 2) == 0) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            }
-        }
-        _exit(0);
-    }
-
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-
-    uint32_t read_count = 0;
-    uint32_t corrupted_count = 0;
-
-    SharedMemoryTest shm(SHM_NAME, MemoryRole::OPEN_ONLY);
-    auto [buffer] = shm.GetObjects();
-
-    RingBufferData buffer_data;
-    uint32_t pos = 0;
-    while (true) {
-        if (buffer->Read(buffer_data, 0)) {
-            if (buffer_data.marker1 != data1[pos] || buffer_data.marker2 != data2[pos]) {
-                ++corrupted_count;
-            }
-            ++read_count;
-            ++pos;
-        } else if (!shm.IsProducerAlive(3)) {
-            break;
-        }
-    }
-
-    EXPECT_EQ(read_count, data_length);
-    EXPECT_EQ(corrupted_count, 0);
 }
