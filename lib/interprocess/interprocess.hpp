@@ -1,7 +1,7 @@
 #pragma once
 
-#include <lib/interprocess/ring_buffer.hpp>
 #include <lib/interprocess/ring_buffer_data.hpp>
+#include <lib/interprocess/spmc_ring_buffer.hpp>
 #include <lib/interprocess/shared_memory.hpp>
 
 #include <cstdint>
@@ -16,7 +16,7 @@ const char* const SHM_NAME_MD_FEEDER_TO_TRADING_ENGINE = "md_feeder_to_trading_e
 
 using BestBidAskRingBufferData = BestBidAskData<CACHE_LINE_SIZE>;
 
-using BestBidAskRingBuffer = RingBuffer<
+using BestBidAskRingBuffer = SpmcRingBuffer<
     BestBidAskRingBufferData,
     CACHE_LINE_SIZE,
     32 /*BufferLength*/,
