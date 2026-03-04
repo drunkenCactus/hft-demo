@@ -58,7 +58,7 @@ public:
     }
 
 private:
-    uint32_t Increment(const uint32_t current) const noexcept {
+    static uint32_t Increment(const uint32_t current) noexcept {
         // optimization of (current + 1) % BufferLength
         return (current + 1) & (BufferLength - 1);
     }
