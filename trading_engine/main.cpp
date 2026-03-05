@@ -1,13 +1,9 @@
-#include <lib/logger.hpp>
+#include <lib/interprocess/hot_path_logger.hpp>
 #include <lib/interprocess/interprocess.hpp>
 
 #include <chrono>
 
-const std::string LOGFILE_PATH = "/var/log/hft/trading_engine.log";
 constexpr uint32_t CONSUMER_ID = 0;
-
-Logger<LogLevel::INFO> LOG_INFO(LOGFILE_PATH);
-Logger<LogLevel::ERROR> LOG_ERROR(LOGFILE_PATH);
 
 void DoStrategy(const hft::BestBidAskRingBufferData& shared_data) {
     auto [bid_px, bid_qty] = shared_data.best_bid;
@@ -22,16 +18,21 @@ void DoStrategy(const hft::BestBidAskRingBufferData& shared_data) {
         const double order_qty = 0.001;
         const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 
-        LOG_INFO << "Current ts " << now << ", data ts " << shared_data.ts << Endl;
-        LOG_INFO << "BUY{" << buy_price << "," << order_qty << "}" << Endl;
-        LOG_INFO << "SELL{" << sell_price << "," << order_qty << "}" << Endl;
+        HOT_INFO << "Current ts " << now << ", data ts " << shared_data.ts << Endl;
+        HOT_INFO << "BUY{" << buy_price << "," << order_qty << "}" << Endl;
+        HOT_INFO << "SELL{" << sell_price << "," << order_qty << "}" << Endl;
     }
 }
 
 int main(int argc, char *argv[]) {
-    ProcessWatcher watcher(LOG_INFO, "Trading Engine");
-
     try {
+        hft::RemoveSharedMemory(hft::SHM_NAME_TRADING_ENGINE_BTC_TO_OBSERVER);
+        hft::ShmToObserver shm_log(hft::SHM_NAME_TRADING_ENGINE_BTC_TO_OBSERVER, hft::MemoryRole::CREATE_ONLY);
+        auto [ring_buffer_log] = shm_log.GetObjects();
+
+        hft::HotPathLogger::Init(ring_buffer_log);
+        HOT_INFO << "Trading Engine started!" << Endl;
+
         hft::ShmMdFeederToTradingEngine shared_memory(hft::SHM_NAME_MD_FEEDER_TO_TRADING_ENGINE, hft::MemoryRole::OPEN_ONLY);
         auto [ring_buffer] = shared_memory.GetObjects();
 
@@ -45,7 +46,7 @@ int main(int argc, char *argv[]) {
         }
 
     } catch (const std::exception& e) {
-        LOG_ERROR << "Exception: " << e.what() << Endl;
+        HOT_ERROR << "Exception: " << e.what() << Endl;
         return 1;
     }
 

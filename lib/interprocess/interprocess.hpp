@@ -2,6 +2,7 @@
 
 #include <lib/interprocess/ring_buffer_data.hpp>
 #include <lib/interprocess/spmc_ring_buffer.hpp>
+#include <lib/interprocess/spsc_ring_buffer.hpp>
 #include <lib/interprocess/shared_memory.hpp>
 
 #include <cstdint>
@@ -33,13 +34,12 @@ using ShmMdFeederToTradingEngine = SharedMemory<
 const char* const SHM_NAME_MD_FEEDER_TO_OBSERVER = "md_feeder_to_observer";
 const char* const SHM_NAME_TRADING_ENGINE_BTC_TO_OBSERVER = "md_trading_engine_btc_to_observer";
 
-using ObserverRingBufferData = ObserverData<CACHE_LINE_SIZE>;
+using ObserverRingBufferData = ObserverData<CACHE_LINE_SIZE, 2 * CACHE_LINE_SIZE>;
 
-using ObserverRingBuffer = RingBuffer<
+using ObserverRingBuffer = SpscRingBuffer<
     ObserverRingBufferData,
     CACHE_LINE_SIZE,
-    1024 /*BufferLength*/,
-    1 /*ConsumersCount*/
+    1024 /*BufferLength*/
 >;
 
 using ShmToObserver = SharedMemory<

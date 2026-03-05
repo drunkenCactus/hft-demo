@@ -1,107 +1,71 @@
 #pragma once
 
-#include <chrono>
-#include <format>
+#include <lib/log_endl.hpp>
+
 #include <fstream>
 #include <mutex>
+#include <sstream>
+
+namespace hft {
 
 enum class LogLevel {
-    DEBUG,
     INFO,
     WARNING,
     ERROR
 };
 
-constexpr struct TypeEndl {} Endl;
-
-template <LogLevel LEVEL>
 class Logger {
-public:
-    Logger(const std::string log_file_path)
-        : log_file_path_(log_file_path)
-    {
-        Open();
-    }
+private:
+    class Formatter {
+    public:
+        Formatter(Logger& logger, LogLevel level);
 
-    ~Logger() {
-        Close();
-    }
+        Formatter(const Formatter& other) = delete;
+        Formatter(Formatter&& other) = delete;
+        Formatter& operator=(const Formatter& other) = delete;
+        Formatter& operator=(Formatter&& other) = delete;
+        ~Formatter() = default;
 
-    template <typename T>
-    Logger& operator<<(const T& data) {
-        std::lock_guard<std::mutex> lock(log_mutex_);
-        if (!log_file_.is_open()) {
+        template <typename T>
+        Formatter& operator<<(const T& data) {
+            buffer_ << data;
             return *this;
         }
-        if (needs_prefix_) {
-            WritePrefix();
-        }
-        log_file_ << data;
-        return *this;
-    }
 
-    Logger& operator<<(const TypeEndl&) {
-        std::lock_guard<std::mutex> lock(log_mutex_);
-        if (!log_file_.is_open()) {
-            return *this;
-        }
-        log_file_ << std::endl;
-        needs_prefix_ = true;
-        return *this;
-    }
+        Formatter& operator<<(const TypeEndl&);
 
-private:
-    void WritePrefix() {
-        const auto now = std::chrono::system_clock::now();
-        log_file_ << std::format("{:%Y-%m-%d %H:%M:%S}", now) << " ";
+    private:
+        Logger& logger_;
+        const LogLevel level_;
+        std::ostringstream buffer_;
+    };
 
-        if constexpr (LEVEL == LogLevel::DEBUG) {
-            log_file_ << "[DEBUG] ";
-        } else if constexpr (LEVEL == LogLevel::INFO) {
-            log_file_ << "[INFO] ";
-        } else if constexpr (LEVEL == LogLevel::WARNING) {
-            log_file_ << "[WARNING] ";
-        } else if constexpr (LEVEL == LogLevel::ERROR) {
-            log_file_ << "[ERROR] ";
-        }
-        needs_prefix_ = false;
-    }
-
-    void Open() {
-        std::lock_guard<std::mutex> lock(log_mutex_);
-        log_file_.open(log_file_path_, std::ios::app);
-        needs_prefix_ = true;
-    }
-
-    void Close() {
-        std::lock_guard<std::mutex> lock(log_mutex_);
-        if (log_file_.is_open()) {
-            log_file_.close();
-        }
-    }
-
-private:
-    std::mutex log_mutex_;
-    std::ofstream log_file_;
-    bool needs_prefix_ = true;
-    const std::string log_file_path_;
-};
-
-template <LogLevel LEVEL>
-class ProcessWatcher {
 public:
-    ProcessWatcher(Logger<LEVEL>& logger, const char* const process_name)
-        : logger_(logger)
-        , process_name_(process_name)
-    {
-        logger_ << process_name_ << " started!" << Endl;
-    }
+    Logger() = default;
+    Logger(const Logger& other) = delete;
+    Logger(Logger&& other) = delete;
+    Logger& operator=(const Logger& other) = delete;
+    Logger& operator=(Logger&& other) = delete;
 
-    ~ProcessWatcher() {
-        logger_ << process_name_ << " aborted!" << Endl;
-    }
+    ~Logger();
+
+    void Open(const std::string logfile_path);
+
+    void Write(const std::string& data, LogLevel level);
+
+    Formatter GetFormatter(LogLevel level) noexcept;
+
+    static Logger& Instance() noexcept;
+
+    static void Init(const std::string logfile_path);
 
 private:
-    Logger<LEVEL>& logger_;
-    const char* const process_name_;
+    std::mutex mutex_;
+    std::ofstream logfile_;
 };
+
+}  // namespace hft
+
+#define LOG_INFO hft::Logger::Instance().GetFormatter(hft::LogLevel::INFO)
+#define LOG_WARNING hft::Logger::Instance().GetFormatter(hft::LogLevel::WARNING)
+#define LOG_ERROR hft::Logger::Instance().GetFormatter(hft::LogLevel::ERROR)

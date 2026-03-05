@@ -33,7 +33,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Имя приложения
-APP_NAMES=("md_feeder" "trading_engine")
+APP_NAMES=("md_feeder" "trading_engine" "observer")
 APP_USER="hft-user"
 APP_GROUP="hft-group"
 
@@ -47,7 +47,7 @@ TARGET_SYSTEMD_DIR="/etc/systemd/system"
 TARGET_LOGROTATE_DIR="/etc/logrotate.d"
 
 # Файлы конфигурации
-SYSTEMD_CONFIGS=("md_feeder.service" "trading_engine.service")
+SYSTEMD_CONFIGS=("md_feeder.service" "trading_engine.service" "observer.service")
 LOGROTATE_CONFIG="hft_logrotate"
 
 # ============================================
@@ -217,6 +217,12 @@ deploy() {
     log_info "  → Запускаем trading_engine..."
     systemctl enable trading_engine
     systemctl start trading_engine
+
+    sleep 1
+
+    log_info "  → Запускаем observer..."
+    systemctl enable observer
+    systemctl start observer
 
     log_success "Деплой завершен"
 }

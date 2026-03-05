@@ -1,4 +1,4 @@
-#include <lib/logger.hpp>
+#include <lib/interprocess/hot_path_logger.hpp>
 #include <lib/interprocess/interprocess.hpp>
 
 #include <boost/asio.hpp>
@@ -23,10 +23,6 @@ using tcp = net::ip::tcp;
 const std::string HOST = "stream.binance.com";
 const std::string PORT = "9443";
 const std::string TARGET = "/ws/btcusdt@depth5@100ms";
-const std::string LOGFILE_PATH = "/var/log/hft/md_feeder.log";
-
-Logger<LogLevel::INFO> LOG_INFO(LOGFILE_PATH);
-Logger<LogLevel::ERROR> LOG_ERROR(LOGFILE_PATH);
 
 class OrderBook {
 public:
@@ -66,7 +62,7 @@ void OnWsMessage(OrderBook& book, const std::string& text, hft::BestBidAskRingBu
     rapidjson::Document d;
     d.Parse(text.c_str());
     if (d.HasParseError()) {
-        LOG_ERROR << "Parsing error!" << Endl;
+        HOT_ERROR << "Parsing error!" << Endl;
         return;
     }
     if (d.HasMember("bids") && d.HasMember("asks")) {
@@ -78,9 +74,14 @@ void OnWsMessage(OrderBook& book, const std::string& text, hft::BestBidAskRingBu
 }
 
 int main() {
-    ProcessWatcher watcher(LOG_INFO, "MD Feeder");
-
     try {
+        hft::RemoveSharedMemory(hft::SHM_NAME_MD_FEEDER_TO_OBSERVER);
+        hft::ShmToObserver shm_log(hft::SHM_NAME_MD_FEEDER_TO_OBSERVER, hft::MemoryRole::CREATE_ONLY);
+        auto [ring_buffer_log] = shm_log.GetObjects();
+
+        hft::HotPathLogger::Init(ring_buffer_log);
+        HOT_INFO << "MD Feeder started!" << Endl;
+
         hft::RemoveSharedMemory(hft::SHM_NAME_MD_FEEDER_TO_TRADING_ENGINE);
         hft::ShmMdFeederToTradingEngine shared_memory(hft::SHM_NAME_MD_FEEDER_TO_TRADING_ENGINE, hft::MemoryRole::CREATE_ONLY);
         auto [ring_buffer] = shared_memory.GetObjects();
@@ -98,7 +99,7 @@ int main() {
 
         websocket::stream<beast::ssl_stream<beast::tcp_stream>> ws(std::move(stream));
         ws.handshake(HOST, TARGET);
-        LOG_INFO << "WebSocket connected!" << Endl;
+        HOT_INFO << "WebSocket connected!" << Endl;
 
         OrderBook book;
         while (true) {
@@ -112,7 +113,7 @@ int main() {
         }
 
     } catch (const std::exception& e) {
-        LOG_ERROR << "Exception: " << e.what() << Endl;
+        HOT_ERROR << "Exception: " << e.what() << Endl;
         return 1;
     }
 
