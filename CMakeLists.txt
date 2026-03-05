@@ -14,6 +14,18 @@ include_directories(
     ${Boost_INCLUDE_DIRS}
 )
 
+set(COMMON_SOURCES
+    lib/logger.cpp
+    lib/interprocess/hot_path_logger.cpp
+)
+
+set(COMMON_HEADERS
+    lib/logger.hpp
+    lib/interprocess/hot_path_logger.hpp
+)
+
+add_library(common_lib STATIC ${COMMON_SOURCES} ${COMMON_HEADERS})
+
 add_executable(md_feeder
     md_feeder/main.cpp
 )
@@ -22,8 +34,14 @@ add_executable(trading_engine
     trading_engine/main.cpp
 )
 
+add_executable(observer
+    observer/main.cpp
+    observer/observer.cpp
+)
+
 add_executable(run_tests
     tests/main.cpp
+    tests/test_hot_path_logger.cpp
     tests/test_shared_memory.cpp
     tests/test_spmc_ring_buffer.cpp
     tests/test_spsc_ring_buffer.cpp
@@ -37,15 +55,23 @@ target_link_libraries(md_feeder
     pthread
     c++
     c++abi
+    common_lib
 )
 
 target_link_libraries(trading_engine
     ${Boost_LIBRARIES}
     c++
     c++abi
+    common_lib
+)
+
+target_link_libraries(observer
+    c++
+    common_lib
 )
 
 target_link_libraries(run_tests
     GTest::GTest
     GTest::Main
+    common_lib
 )
