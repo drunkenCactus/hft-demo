@@ -9,6 +9,7 @@ constexpr uint32_t TRUE_SIZE = ObserverRingBufferData::message_size - 1;
 
 TEST(HotPathLogger, MessageLength) {
     EXPECT_EQ(TRUE_SIZE, 118);
+    EXPECT_EQ(sizeof(ObserverRingBufferData), 128);
 }
 
 TEST(HotPathLogger, StringLiterals) {
