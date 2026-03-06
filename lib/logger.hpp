@@ -1,18 +1,12 @@
 #pragma once
 
-#include <lib/log_endl.hpp>
+#include <lib/log_common.hpp>
 
 #include <fstream>
 #include <mutex>
 #include <sstream>
 
 namespace hft {
-
-enum class LogLevel {
-    INFO,
-    WARNING,
-    ERROR
-};
 
 class Logger {
 private:

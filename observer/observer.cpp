@@ -18,36 +18,6 @@ const std::vector<std::pair<const char* const, std::string>> SHM_NAME_TO_LOGFILE
 
 constexpr uint32_t RECONNECT_TIMEOUT_SECONDS = 1;
 
-std::string TimestampFormatted(uint64_t timestamp_ns) {
-    return std::format(
-        "{:%Y-%m-%d %H:%M:%S}",
-        std::chrono::system_clock::time_point(std::chrono::nanoseconds(timestamp_ns))
-    );
-}
-
-std::ostream& operator<<(std::ostream& s, ObserverRingBufferData::LogLevel level) {
-    switch (level) {
-        case ObserverRingBufferData::LogLevel::INFO:
-            s << "[INFO] ";
-            break;
-        case ObserverRingBufferData::LogLevel::WARNING:
-            s << "[WARNING] ";
-            break;
-        case ObserverRingBufferData::LogLevel::ERROR:
-            s << "[ERROR] ";
-            break;
-    }
-    return s;
-}
-
-std::ostream& operator<<(std::ostream& s, const ObserverRingBufferData& data) {
-    s << TimestampFormatted(data.timestamp_ns) << " ";
-    s << data.level;
-    s << data.message;
-    s << std::endl;
-    return s;
-}
-
 class FailedToOpenLogfile : public std::runtime_error {
 public:
     FailedToOpenLogfile(const std::string& logfile_path)
@@ -79,7 +49,8 @@ public:
         ObserverRingBufferData data;
         while (true) {
             if (ring_buffer_->Read(data)) {
-                logfile_ << data;
+                const auto time = std::chrono::system_clock::time_point(std::chrono::nanoseconds(data.timestamp_ns));
+                WriteLog(logfile_, time, data.level, data.message);
             }
         }
     }
