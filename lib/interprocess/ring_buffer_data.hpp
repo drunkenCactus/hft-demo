@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lib/log_common.hpp>
+
 #include <cstdint>
 #include <utility>
 
@@ -14,11 +16,6 @@ struct alignas(Alignment) BestBidAskData {
 
 template <uint32_t Alignment, uint32_t DataSize>
 struct alignas(Alignment) ObserverData {
-    enum class LogLevel : uint8_t {
-        INFO,
-        WARNING,
-        ERROR
-    };
     constexpr static uint32_t message_size = DataSize - sizeof(uint64_t) - sizeof(LogLevel);
 
     static_assert(

@@ -1,8 +1,5 @@
 #include "logger.hpp"
 
-#include <chrono>
-#include <format>
-
 namespace hft {
 
 Logger::Formatter::Formatter(Logger& logger, LogLevel level)
@@ -31,19 +28,7 @@ void Logger::Open(const std::string logfile_path) {
 
 void Logger::Write(const std::string& data, LogLevel level) {
     std::lock_guard<std::mutex> lock(mutex_);
-    logfile_ << std::format("{:%Y-%m-%d %H:%M:%S}", std::chrono::system_clock::now()) << " ";
-    switch (level) {
-        case LogLevel::INFO:
-            logfile_ << "[INFO] ";
-            break;
-        case LogLevel::WARNING:
-            logfile_ << "[WARNING] ";
-            break;
-        case LogLevel::ERROR:
-            logfile_ << "[ERROR] ";
-            break;
-    }
-    logfile_ << data << std::endl;
+    WriteLog(logfile_, std::chrono::system_clock::now(), level, data.c_str());
 }
 
 Logger::Formatter Logger::GetFormatter(LogLevel level) noexcept {

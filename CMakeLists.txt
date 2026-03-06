@@ -15,11 +15,13 @@ include_directories(
 )
 
 set(COMMON_SOURCES
+    lib/log_common.cpp
     lib/logger.cpp
     lib/interprocess/hot_path_logger.cpp
 )
 
 set(COMMON_HEADERS
+    lib/log_common.hpp
     lib/logger.hpp
     lib/interprocess/hot_path_logger.hpp
 )

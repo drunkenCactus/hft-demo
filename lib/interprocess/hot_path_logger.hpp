@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lib/interprocess/interprocess.hpp>
-#include <lib/log_endl.hpp>
+#include <lib/log_common.hpp>
 
 #include <algorithm>
 
@@ -11,7 +11,13 @@ class HotPathLogger {
 private:
     class Formatter {
     public:
-        Formatter(HotPathLogger& logger, ObserverRingBufferData::LogLevel level) noexcept;
+        Formatter(HotPathLogger& logger, LogLevel level) noexcept;
+
+        Formatter(const Formatter& other) = delete;
+        Formatter(Formatter&& other) = delete;
+        Formatter& operator=(const Formatter& other) = delete;
+        Formatter& operator=(Formatter&& other) = delete;
+        ~Formatter() = default;
 
         template<uint32_t N>
         Formatter& operator<<(const char (&str)[N]) noexcept {
@@ -58,7 +64,7 @@ public:
 
     void Create(ObserverRingBuffer* ring_buffer) noexcept;
 
-    Formatter GetFormatter(ObserverRingBufferData::LogLevel level) noexcept;
+    Formatter GetFormatter(LogLevel level) noexcept;
 
     static HotPathLogger& Instance() noexcept;
 
@@ -70,6 +76,6 @@ private:
 
 }  // namespace hft
 
-#define HOT_INFO hft::HotPathLogger::Instance().GetFormatter(hft::ObserverRingBufferData::LogLevel::INFO)
-#define HOT_WARNING hft::HotPathLogger::Instance().GetFormatter(hft::ObserverRingBufferData::LogLevel::WARNING)
-#define HOT_ERROR hft::HotPathLogger::Instance().GetFormatter(hft::ObserverRingBufferData::LogLevel::ERROR)
+#define HOT_INFO hft::HotPathLogger::Instance().GetFormatter(hft::LogLevel::INFO)
+#define HOT_WARNING hft::HotPathLogger::Instance().GetFormatter(hft::LogLevel::WARNING)
+#define HOT_ERROR hft::HotPathLogger::Instance().GetFormatter(hft::LogLevel::ERROR)

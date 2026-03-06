@@ -2,7 +2,7 @@
 
 namespace hft {
 
-HotPathLogger::Formatter::Formatter(HotPathLogger& logger, ObserverRingBufferData::LogLevel level) noexcept
+HotPathLogger::Formatter::Formatter(HotPathLogger& logger, LogLevel level) noexcept
     : logger_(logger)
 {
     data_.level = level;
@@ -39,7 +39,7 @@ void HotPathLogger::Create(ObserverRingBuffer* ring_buffer) noexcept {
     ring_buffer_ = ring_buffer;
 }
 
-HotPathLogger::Formatter HotPathLogger::GetFormatter(ObserverRingBufferData::LogLevel level) noexcept {
+HotPathLogger::Formatter HotPathLogger::GetFormatter(LogLevel level) noexcept {
     return HotPathLogger::Formatter(*this, level);
 }
 
