@@ -29,11 +29,14 @@ set(COMMON_HEADERS
 add_library(common_lib STATIC ${COMMON_SOURCES} ${COMMON_HEADERS})
 
 add_executable(md_feeder
+    md_feeder/binance_client.cpp
     md_feeder/main.cpp
+    md_feeder/md_feeder.cpp
 )
 
 add_executable(trading_engine
     trading_engine/main.cpp
+    trading_engine/trading_engine.cpp
 )
 
 add_executable(observer

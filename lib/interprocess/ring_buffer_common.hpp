@@ -4,6 +4,12 @@
 
 namespace hft {
 
+enum class ReadResult : uint8_t {
+    SUCCESS,
+    BUFFER_IS_EMPTY,
+    CONSUMER_IS_DISABLED
+};
+
 template <uint32_t Alignment, typename T>
 struct alignas(Alignment) AlignedAtomic {
     std::atomic<T> value;

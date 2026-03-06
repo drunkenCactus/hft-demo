@@ -44,6 +44,12 @@ std::tuple<Objects*...> FetchObjectsFromBuffer(void* buffer) noexcept {
     return std::make_tuple((reinterpret_cast<Objects*>(head + std::exchange(offset, offset + GetSizeWithPadding<Alignment, Objects>())))...);
 }
 
+class ShmVersionConflict : public std::runtime_error {
+public:
+    ShmVersionConflict()
+        : std::runtime_error("Shared memory version conflict") {}
+};
+
 enum class MemoryRole {
     CREATE_ONLY,
     OPEN_ONLY
@@ -113,7 +119,7 @@ public:
                 throw std::runtime_error("shared memory magic is missed");
             }
             if (meta_->version != IPC_VERSION) {
-                throw std::runtime_error("shared memory version conflict");
+                throw ShmVersionConflict();
             }
         }
     }

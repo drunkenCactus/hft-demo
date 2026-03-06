@@ -43,7 +43,8 @@ TEST(SpscRingBuffer, ReadWritten) {
     std::thread consumer([&]() {
         RingBufferData buffer_data;
         while (true) {
-            if (buffer.Read(buffer_data)) {
+            ReadResult result = buffer.Read(buffer_data);
+            if (result == ReadResult::SUCCESS) {
                 if (buffer_data.marker1 != data1[read_count] || buffer_data.marker2 != data2[read_count]) {
                     ++corrupted_count;
                 }
@@ -91,7 +92,7 @@ TEST(SpscRingBuffer, DisableLaggingConsumer) {
     auto read = [&buffer]() {
         RingBufferData buffer_data;
         std::string result;
-        while (buffer.Read(buffer_data)) {
+        while (buffer.Read(buffer_data) == ReadResult::SUCCESS) {
             result.push_back(buffer_data.marker1);
         }
         return result;
