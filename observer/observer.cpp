@@ -17,65 +17,60 @@ const std::vector<std::pair<const char* const, std::string>> SHM_NAME_TO_LOGFILE
 };
 
 constexpr uint32_t RECONNECT_TIMEOUT_SECONDS = 1;
+constexpr uint32_t LIVENESS_TRESHOLD_SECONDS = 5;
 
-class FailedToOpenLogfile : public std::runtime_error {
-public:
-    FailedToOpenLogfile(const std::string& logfile_path)
-        : std::runtime_error("Сannot open logfile " + logfile_path) {}
-};
-
-class LogProcessor {
-public:
-    LogProcessor(const char* const shm_name, const std::string& logfile_path)
-        : shared_memory_(shm_name, MemoryRole::OPEN_ONLY)
-        , ring_buffer_(std::get<ObserverRingBuffer*>(shared_memory_.GetObjects()))
-    {
-        logfile_.open(logfile_path, std::ios::app);
-        if (!logfile_.is_open()) {
-            throw FailedToOpenLogfile(logfile_path);
-        }
-    }
-
-    LogProcessor(const LogProcessor& other) = delete;
-    LogProcessor(LogProcessor&& other) = delete;
-    LogProcessor& operator=(const LogProcessor& other) = delete;
-    LogProcessor& operator=(LogProcessor&& other) = delete;
-
-    ~LogProcessor() {
-        logfile_.close();
-    }
-
-    void Run() {
-        ObserverRingBufferData data;
-        while (true) {
-            if (ring_buffer_->Read(data)) {
-                const auto time = std::chrono::system_clock::time_point(std::chrono::nanoseconds(data.timestamp_ns));
-                WriteLog(logfile_, time, data.level, data.message);
-            }
-        }
-    }
-
-private:
-    ShmToObserver shared_memory_;
-    ObserverRingBuffer* ring_buffer_ = nullptr;
-    std::ofstream logfile_;
-};
-
-void ProcessLog(const char* const shm_name, const std::string& logfile_path) {
-    std::unique_ptr<LogProcessor> processor = nullptr;
-    while (processor == nullptr) {
+int ProcessLogAttempt(const char* const shm_name, std::ofstream& logfile) {
+    std::unique_ptr<ShmToObserver> shm = nullptr;
+    while (shm == nullptr) {
         try {
-            processor = std::make_unique<LogProcessor>(shm_name, logfile_path);
-        } catch (const FailedToOpenLogfile& e) {
+            shm = std::make_unique<ShmToObserver>(shm_name, MemoryRole::OPEN_ONLY);
+        } catch (const ShmVersionConflict& e) {
             LOG_ERROR << e.what() << Endl;
-            return;
+            return 1;
         } catch (const std::exception& e) {
-            LOG_ERROR << "Failed to open shared memory " << shm_name << Endl;
+            LOG_WARNING << "Failed to open {" << shm_name << "}: " << e.what() << Endl;
             std::this_thread::sleep_for(std::chrono::seconds(RECONNECT_TIMEOUT_SECONDS));
         }
     }
-    LOG_INFO << "Start receiving logs from " << shm_name << Endl;
-    processor->Run();
+    auto [ring_buffer] = shm->GetObjects();
+    LOG_INFO << "Start receiving logs from {" << shm_name << "}" << Endl;
+
+    ObserverRingBufferData data;
+    while (true) {
+        ReadResult result = ring_buffer->Read(data);
+        if (result == ReadResult::SUCCESS) {
+            const auto time = std::chrono::system_clock::time_point(std::chrono::nanoseconds(data.timestamp_ns));
+            WriteLog(logfile, time, data.level, data.message);
+        } else if (result == ReadResult::CONSUMER_IS_DISABLED) {
+            LOG_WARNING << "Consumer for {" << shm_name << "} is disabled" << Endl;
+            ring_buffer->ResetConsumer();
+        } else if (!shm->IsProducerAlive(LIVENESS_TRESHOLD_SECONDS)) {
+            LOG_WARNING << "Producer for {" << shm_name << "} is dead" << Endl;
+            return 0;
+        }
+    }
+    return 0;
+}
+
+void ProcessLog(const char* const shm_name, const std::string& logfile_path) {
+    std::ofstream logfile;
+    logfile.open(logfile_path, std::ios::app);
+    if (!logfile.is_open()) {
+        LOG_ERROR << "Сannot open logfile " << logfile_path << Endl;
+        std::exit(1);
+    }
+
+    while (true) {
+        if (ProcessLogAttempt(shm_name, logfile) != 0) {
+            logfile.close();
+            std::exit(1);
+        }
+        std::this_thread::sleep_for(std::chrono::seconds(RECONNECT_TIMEOUT_SECONDS));
+        LOG_WARNING << "Restarting logging for {" << shm_name << "}" << Endl;
+    }
+
+    LOG_ERROR << "Unexpected event" << Endl;
+    logfile.close();
 }
 
 }  // namespace
@@ -92,6 +87,8 @@ void RunObserver() {
     for (auto& thread : threads) {
         thread.join();
     }
+
+    LOG_INFO << "Finishing Observer" << Endl;
 }
 
 }  // namespace hft

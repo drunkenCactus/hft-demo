@@ -33,21 +33,19 @@ public:
         head_.value.store(new_head, std::memory_order_release);
     }
 
-    [[nodiscard]] bool Read(Data& data, const uint32_t consumer) noexcept {
+    [[nodiscard]] ReadResult Read(Data& data, const uint32_t consumer) noexcept {
         if (!active_consumers_[consumer].value.load(std::memory_order_acquire)) {
-            // consumer is disabled
-            return false;
+            return ReadResult::CONSUMER_IS_DISABLED;
         }
         const uint32_t current_tail = tails_[consumer].value.load(std::memory_order_relaxed);
         const uint32_t head = head_.value.load(std::memory_order_acquire);
         if (current_tail == head) {
-            // nothing to read
-            return false;
+            return ReadResult::BUFFER_IS_EMPTY;
         }
         const uint32_t new_tail = Increment<BufferLength>(current_tail);
         data = data_[new_tail];
         tails_[consumer].value.store(new_tail, std::memory_order_release);
-        return true;
+        return ReadResult::SUCCESS;
     }
 
     void ResetConsumer(const uint32_t consumer) noexcept {

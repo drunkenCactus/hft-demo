@@ -1,3 +1,4 @@
+#include "lib/interprocess/ring_buffer_common.hpp"
 #include <gtest/gtest.h>
 #include <tests/utils.hpp>
 
@@ -48,7 +49,8 @@ TEST(SpmcRingBuffer, ReadWritten) {
             RingBufferData buffer_data;
             uint32_t pos = 0;
             while (true) {
-                if (buffer.Read(buffer_data, consumer_id)) {
+                ReadResult result = buffer.Read(buffer_data, consumer_id);
+                if (result == ReadResult::SUCCESS) {
                     if (buffer_data.marker1 != data1[pos] || buffer_data.marker2 != data2[pos]) {
                         corrupted_count.fetch_add(1, std::memory_order_relaxed);
                     }
@@ -101,7 +103,7 @@ TEST(SpmcRingBuffer, DisableLaggingConsumer) {
     auto read = [&buffer]() {
         RingBufferData buffer_data;
         std::string result;
-        while (buffer.Read(buffer_data, 0)) {
+        while (buffer.Read(buffer_data, 0) == ReadResult::SUCCESS) {
             result.push_back(buffer_data.marker1);
         }
         return result;
