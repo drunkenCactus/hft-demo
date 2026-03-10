@@ -22,7 +22,7 @@ void Logger::Open(const std::string logfile_path) {
     std::lock_guard<std::mutex> lock(mutex_);
     logfile_.open(logfile_path, std::ios::app);
     if (!logfile_.is_open()) {
-        throw std::runtime_error("Сannot open logfile " + logfile_path);
+        throw std::runtime_error("Cannot open logfile " + logfile_path);
     }
 }
 

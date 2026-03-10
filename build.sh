@@ -1,15 +1,10 @@
 #!/bin/bash
 
-# ============================================
-# DEPLOY SCRIPT FOR HFT SERVER APPLICATION
-# Автоматическая сборка и деплой с обновлением "на лету"
-# ============================================
-
-set -e  # Выход при первой ошибке
-set -u  # Ошибка при использовании необъявленных переменных
+set -e  # Exit on first error
+set -u  # Error on use of unset variables
 
 # ============================================
-# КОНФИГУРАЦИЯ
+# CONFIGURATION
 # ============================================
 
 RUN_TESTS=false
@@ -26,18 +21,18 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         *)
-            echo "Неизвестный флаг: $1"
+            echo "Unknown flag: $1"
             exit 1
             ;;
     esac
 done
 
-# Имя приложения
+# Application name
 APP_NAMES=("feeder" "trader" "observer")
 APP_USER="hft-user"
 APP_GROUP="hft-group"
 
-# Пути
+# Paths
 SRC_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILD_DIR="$SRC_DIR/.build"
 CONFIG_DIR="$SRC_DIR/conf"
@@ -46,15 +41,15 @@ LOGS_DIR="/var/log/hft"
 TARGET_SYSTEMD_DIR="/etc/systemd/system"
 TARGET_LOGROTATE_DIR="/etc/logrotate.d"
 
-# Файлы конфигурации
+# Configuration files
 SYSTEMD_CONFIGS=("feeder.service" "trader.service" "observer.service")
 LOGROTATE_CONFIG="hft_logrotate"
 
 # ============================================
-# ФУНКЦИИ
+# FUNCTIONS
 # ============================================
 
-# Логирование
+# Logging
 log_info() {
     echo -e "\033[1;34m[INFO]\033[0m $(date '+%Y-%m-%d %H:%M:%S') - $1"
 }
@@ -71,30 +66,29 @@ log_success() {
     echo -e "\033[1;32m[SUCCESS]\033[0m $(date '+%Y-%m-%d %H:%M:%S') - $1"
 }
 
-# Создание пользователя/группы приложения
+# Create application user/group
 create_app_user() {
     if ! id "$APP_USER" &>/dev/null; then
-        log_info "Создание пользователя $APP_USER..."
+        log_info "Creating user $APP_USER..."
         useradd --system --shell /bin/false "$APP_USER"
     fi
 
     if ! getent group "$APP_GROUP" &>/dev/null; then
-        log_info "Создание группы $APP_GROUP..."
+        log_info "Creating group $APP_GROUP..."
         groupadd "$APP_GROUP"
         usermod -aG "$APP_GROUP" "$APP_USER"
     fi
 }
 
-# Создание необходимых директорий
+# Create required directories
 create_directories() {
-    log_info "Создание директорий..."
+    log_info "Creating directories..."
 
     for app_name in "${APP_NAMES[@]}"; do
         mkdir -p "$INSTALL_DIR/$app_name"
     done
     mkdir -p "$LOGS_DIR"
 
-    # Установка прав
     for app_name in "${APP_NAMES[@]}"; do
         chown -R "$APP_USER:$APP_GROUP" "$INSTALL_DIR/$app_name"
         chmod 750 "$INSTALL_DIR/$app_name"
@@ -103,43 +97,40 @@ create_directories() {
     chmod 755 "$LOGS_DIR"
 }
 
-# Копирование конфигурационных файлов
+# Copy configuration files
 copy_configs() {
-    log_info "Копирование конфигурационных файлов..."
+    log_info "Copying configuration files..."
 
-    # Systemd service
     for systemd_config in "${SYSTEMD_CONFIGS[@]}"; do
         if [[ -f "$CONFIG_DIR/$systemd_config" ]]; then
             cp "$CONFIG_DIR/$systemd_config" "$TARGET_SYSTEMD_DIR/"
             chmod 644 "$TARGET_SYSTEMD_DIR/$systemd_config"
-            log_info "  → конфиг systemd для $systemd_config скопирован"
+            log_info "  → systemd config for $systemd_config copied"
         else
-            log_warn "Конфиг systemd для $systemd_config не найден: $CONFIG_DIR/$systemd_config"
+            log_warn "Systemd config for $systemd_config not found: $CONFIG_DIR/$systemd_config"
             exit 1
         fi
     done
 
-    # Logrotate config
     if [[ -f "$CONFIG_DIR/$LOGROTATE_CONFIG" ]]; then
         cp "$CONFIG_DIR/$LOGROTATE_CONFIG" "$TARGET_LOGROTATE_DIR/"
         chmod 644 "$TARGET_LOGROTATE_DIR/$LOGROTATE_CONFIG"
-        log_info "  → конфиг logrotate скопирован"
+        log_info "  → logrotate config copied"
     else
-        log_warn "Конфиг logrotate не найден: $CONFIG_DIR/$LOGROTATE_CONFIG"
+        log_warn "Logrotate config not found: $CONFIG_DIR/$LOGROTATE_CONFIG"
     fi
 }
 
-# Настройка cron для учащенного запуска logrotate
+# Configure cron for frequent logrotate runs
 deploy_cron_config() {
-    log_info "Настройка cron для учащенного запуска logrotate..."
+    log_info "Configuring cron for frequent logrotate runs..."
 
     CRON_FILE="/etc/cron.d/hft-logrotate"
     STATE_DIR="/var/lib/logrotate"
 
-    # Создаем директорию для состояния
     mkdir -p "$STATE_DIR"
 
-    # Создаем cron файл
+    # Create cron file
     cat > "$CRON_FILE" << EOF
 # HFT Logrotate Configuration
 * * * * * root /usr/sbin/logrotate $TARGET_LOGROTATE_DIR/$LOGROTATE_CONFIG --state $STATE_DIR/hft.status 2>&1 | logger -t hft-logrotate
@@ -148,106 +139,100 @@ EOF
     chmod 644 "$CRON_FILE"
 }
 
-# Сборка приложений
+# Build applications
 build_applications() {
-    log_info "Сборка приложений..."
+    log_info "Building applications..."
 
     mkdir -p "$BUILD_DIR"
     cd "$BUILD_DIR"
 
-    # CMake конфигурация
-    log_info "  → запуск cmake..."
+    log_info "  → running cmake..."
     cmake "$SRC_DIR"
 
-    # Компиляция
-    log_info "  → компиляция..."
+    log_info "  → compiling..."
     make
 
-    # Проверка существования бинарников
+    # Verify binaries exist
     for app_name in "${APP_NAMES[@]}"; do
         if [[ -f "$BUILD_DIR/$app_name" ]]; then
-            log_success "Сборка $app_name завершена"
+            log_success "Build of $app_name completed"
         else
-            log_error "Бинарник $app_name не найден в $BUILD_DIR"
+            log_error "Binary $app_name not found in $BUILD_DIR"
             exit 1
         fi
     done
 }
 
-# Установка и запуск приложений
+# Install and start applications
 deploy() {
-    log_info "Деплой приложений..."
+    log_info "Deploying applications..."
 
-    # 1. Останавливаем сервисы
+    # 1. Stop services
     for app_name in "${APP_NAMES[@]}"; do
-        log_info "  → Останавливаем сервис $app_name..."
+        log_info "  → Stopping service $app_name..."
         systemctl stop "$app_name" 2>/dev/null || true
     done
 
-    # 2. Ждем 3 секунды чтобы процессы точно завершились
-    log_info "  → Ожидание завершения процессов..."
+    # 2. Wait 3 seconds for processes to fully terminate
+    log_info "  → Waiting for processes to finish..."
     sleep 3
 
-    # 3. Убиваем все оставшиеся процессы
-    log_info "  → Принудительное завершение оставшихся процессов..."
+    # 3. Kill any remaining processes
+    log_info "  → Force terminating remaining processes..."
     for app_name in "${APP_NAMES[@]}"; do
         pkill -9 -f "$INSTALL_DIR/$app_name/$app_name" 2>/dev/null || true
     done
     sleep 1
 
-    # 4. Копируем бинарники
+    # 4. Copy binaries
     for app_name in "${APP_NAMES[@]}"; do
-        log_info "  → Удаляем старый бинарник $app_name..."
+        log_info "  → Removing old binary $app_name..."
         rm -f "$INSTALL_DIR/$app_name/$app_name" 2>/dev/null || true
-        log_info "  → Копируем новый бинарник $app_name..."
+        log_info "  → Copying new binary $app_name..."
         cp "$BUILD_DIR/$app_name" "$INSTALL_DIR/$app_name/"
         chown "$APP_USER:$APP_GROUP" "$INSTALL_DIR/$app_name/$app_name"
         chmod 750 "$INSTALL_DIR/$app_name/$app_name"
     done
 
-    # 5. Запускаем сервисы
+    # 5. Start services
     systemctl daemon-reload
 
     for app_name in "${APP_NAMES[@]}"; do
-        log_info "  → Запускаем сервис $app_name..."
+        log_info "  → Starting service $app_name..."
         systemctl enable "$app_name"
         systemctl start "$app_name"
     done
 
-    log_success "Деплой завершен"
+    log_success "Deploy completed"
 }
 
 do_deploy() {
-    log_info "Запуск деплоя..."
+    log_info "Starting deploy..."
     create_app_user
     create_directories
     copy_configs
     deploy_cron_config
     deploy
 
-    # Даем время на запуск
+    # Allow time for startup
     sleep 3
 
-    # Проверка сервиса
-    log_info "Проверка деплоя..."
+    # Verify services
+    log_info "Verifying deploy..."
     for app_name in "${APP_NAMES[@]}"; do
         if systemctl is-active --quiet "$app_name"; then
-            log_success "Сервис $app_name запущен и работает"
+            log_success "Service $app_name is up and running"
         else
-            log_error "Сервис $app_name не запущен"
+            log_error "Service $app_name is not running"
             systemctl status "$app_name" --no-pager
         fi
     done
 }
 
 run_tests() {
-    log_info "Запуск тестов..."
+    log_info "Running tests..."
     $BUILD_DIR/run_tests
 }
-
-# ============================================
-# ОСНОВНОЙ СКРИПТ
-# ============================================
 
 main() {
     build_applications
@@ -263,7 +248,6 @@ main() {
     fi
 }
 
-# Запуск с обработкой ошибок
-trap 'log_error "Скрипт прерван!"; exit 1' INT TERM
+trap 'log_error "Script interrupted!"; exit 1' INT TERM
 
 main "$@"
