@@ -11,9 +11,9 @@ namespace hft {
 
 constexpr uint32_t CACHE_LINE_SIZE = 64;
 
-// * * * MD Feeder -> Trading Engine(s) * * *
+// * * * Feeder -> Trader(s) * * *
 
-const char* const SHM_NAME_MD_FEEDER_TO_TRADING_ENGINE = "md_feeder_to_trading_engine";
+const char* const SHM_NAME_FEEDER_TO_TRADER = "feeder_to_trader";
 
 using BestBidAskRingBufferData = BestBidAskData<CACHE_LINE_SIZE>;
 
@@ -24,15 +24,15 @@ using BestBidAskRingBuffer = SpmcRingBuffer<
     1 /*ConsumersCount*/
 >;
 
-using ShmMdFeederToTradingEngine = SharedMemory<
+using ShmFeederToTrader = SharedMemory<
     CACHE_LINE_SIZE,
     BestBidAskRingBuffer
 >;
 
 // * * * Any service -> Observer * * *
 
-const char* const SHM_NAME_MD_FEEDER_TO_OBSERVER = "md_feeder_to_observer";
-const char* const SHM_NAME_TRADING_ENGINE_BTC_TO_OBSERVER = "md_trading_engine_btc_to_observer";
+const char* const SHM_NAME_FEEDER_TO_OBSERVER = "feeder_to_observer";
+const char* const SHM_NAME_TRADER_TO_OBSERVER = "trader_to_observer";
 
 using ObserverRingBufferData = ObserverData<CACHE_LINE_SIZE, 2 * CACHE_LINE_SIZE>;
 

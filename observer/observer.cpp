@@ -12,8 +12,8 @@ const std::string LOGFILES_DIR = "/var/log/hft/";
 const std::string OBSERVER_LOGFILE_PATH = LOGFILES_DIR + "observer.log";
 
 const std::vector<std::pair<const char* const, std::string>> SHM_NAME_TO_LOGFILE_PATH = {
-    {SHM_NAME_MD_FEEDER_TO_OBSERVER, LOGFILES_DIR + "md_feeder.log"},
-    {SHM_NAME_TRADING_ENGINE_BTC_TO_OBSERVER, LOGFILES_DIR + "trading_engine_btc.log"},
+    {SHM_NAME_FEEDER_TO_OBSERVER, LOGFILES_DIR + "feeder.log"},
+    {SHM_NAME_TRADER_TO_OBSERVER, LOGFILES_DIR + "trader.log"},
 };
 
 constexpr uint32_t RECONNECT_TIMEOUT_SECONDS = 1;

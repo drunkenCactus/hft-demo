@@ -1,5 +1,5 @@
 [Unit]
-Description=HFT Trading Engine
+Description=HFT Market Data Feeder
 After=network.target
 
 [Service]
@@ -7,12 +7,12 @@ Type=simple
 User=hft-user
 Group=hft-group
 WorkingDirectory=/opt/hft
-ExecStart=/opt/hft/bin/trading_engine/trading_engine
+ExecStart=/opt/hft/bin/feeder/feeder
 Restart=always
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=hft-trading-engine
+SyslogIdentifier=hft-feeder
 
 [Install]
 WantedBy=multi-user.target
