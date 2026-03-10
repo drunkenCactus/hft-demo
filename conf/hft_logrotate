@@ -1,4 +1,4 @@
-/var/log/hft/md_feeder.log {
+/var/log/hft/feeder.log {
     size 100k
     rotate 3
     create 644 hft-user hft-group
@@ -7,7 +7,7 @@
     notifempty
 }
 
-/var/log/hft/trading_engine_btc.log {
+/var/log/hft/trader.log {
     size 100k
     rotate 3
     create 644 hft-user hft-group
