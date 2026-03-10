@@ -28,15 +28,15 @@ set(COMMON_HEADERS
 
 add_library(common_lib STATIC ${COMMON_SOURCES} ${COMMON_HEADERS})
 
-add_executable(md_feeder
-    md_feeder/binance_client.cpp
-    md_feeder/main.cpp
-    md_feeder/md_feeder.cpp
+add_executable(feeder
+    feeder/binance_client.cpp
+    feeder/main.cpp
+    feeder/feeder.cpp
 )
 
-add_executable(trading_engine
-    trading_engine/main.cpp
-    trading_engine/trading_engine.cpp
+add_executable(trader
+    trader/main.cpp
+    trader/trader.cpp
 )
 
 add_executable(observer
@@ -53,7 +53,7 @@ add_executable(run_tests
     tests/utils.cpp
 )
 
-target_link_libraries(md_feeder
+target_link_libraries(feeder
     ${Boost_LIBRARIES}
     ssl 
     crypto
@@ -63,7 +63,7 @@ target_link_libraries(md_feeder
     common_lib
 )
 
-target_link_libraries(trading_engine
+target_link_libraries(trader
     ${Boost_LIBRARIES}
     c++
     c++abi

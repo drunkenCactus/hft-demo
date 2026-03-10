@@ -2,6 +2,6 @@
 
 namespace hft {
 
-int RunTradingEngine();
+int RunFeeder();
 
 }  // namespace hft

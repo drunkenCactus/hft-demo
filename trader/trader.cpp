@@ -29,11 +29,11 @@ void DoStrategy(const BestBidAskRingBufferData& market_data) {
 
 }  // namespace
 
-int RunTradingEngine() {
+int RunTrader() {
     std::unique_ptr<ShmToObserver> shm_log = nullptr;
     try {
-        RemoveSharedMemory(SHM_NAME_TRADING_ENGINE_BTC_TO_OBSERVER);
-        shm_log = std::make_unique<ShmToObserver>(SHM_NAME_TRADING_ENGINE_BTC_TO_OBSERVER, MemoryRole::CREATE_ONLY);
+        RemoveSharedMemory(SHM_NAME_TRADER_TO_OBSERVER);
+        shm_log = std::make_unique<ShmToObserver>(SHM_NAME_TRADER_TO_OBSERVER, MemoryRole::CREATE_ONLY);
         shm_log->UpdateHeartbeat();
     } catch (const std::exception& e) {
         return 1;
@@ -41,12 +41,12 @@ int RunTradingEngine() {
 
     auto [ring_buffer_log] = shm_log->GetObjects();
     HotPathLogger::Init(ring_buffer_log);
-    HOT_INFO << "Trading Engine started!" << Endl;
+    HOT_INFO << "Trader started!" << Endl;
 
-    std::unique_ptr<ShmMdFeederToTradingEngine> shm_market_data = nullptr;
+    std::unique_ptr<ShmFeederToTrader> shm_market_data = nullptr;
     while (shm_market_data == nullptr) {
         try {
-            shm_market_data = std::make_unique<ShmMdFeederToTradingEngine>(SHM_NAME_MD_FEEDER_TO_TRADING_ENGINE, MemoryRole::OPEN_ONLY);
+            shm_market_data = std::make_unique<ShmFeederToTrader>(SHM_NAME_FEEDER_TO_TRADER, MemoryRole::OPEN_ONLY);
         } catch (const ShmVersionConflict& e) {
             HOT_ERROR << e.what() << Endl;
             return 1;
@@ -57,14 +57,14 @@ int RunTradingEngine() {
     }
     HOT_INFO << "Market Data shared memory opened" << Endl;
 
-    auto [ring_buffer_md_feeder] = shm_market_data->GetObjects();
-    ring_buffer_md_feeder->ResetConsumer(CONSUMER_ID);
+    auto [ring_buffer_feeder] = shm_market_data->GetObjects();
+    ring_buffer_feeder->ResetConsumer(CONSUMER_ID);
 
     BestBidAskRingBufferData market_data;
     while (true) {
         shm_log->UpdateHeartbeat();
 
-        ReadResult result = ring_buffer_md_feeder->Read(market_data, CONSUMER_ID);
+        ReadResult result = ring_buffer_feeder->Read(market_data, CONSUMER_ID);
         if (result == ReadResult::SUCCESS) {
             DoStrategy(market_data);
         } else if (result == ReadResult::CONSUMER_IS_DISABLED) {
@@ -76,7 +76,7 @@ int RunTradingEngine() {
         }
     }
 
-    HOT_INFO << "Finishing Trading Engine" << Endl;
+    HOT_INFO << "Finishing Trader" << Endl;
     return 0;
 }
 

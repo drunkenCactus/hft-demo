@@ -57,18 +57,18 @@ private:
 
 }  // namespace
 
-int RunMdFeeder() {
+int RunFeeder() {
     try {
-        RemoveSharedMemory(SHM_NAME_MD_FEEDER_TO_OBSERVER);
-        ShmToObserver shm_log(SHM_NAME_MD_FEEDER_TO_OBSERVER, MemoryRole::CREATE_ONLY);
+        RemoveSharedMemory(SHM_NAME_FEEDER_TO_OBSERVER);
+        ShmToObserver shm_log(SHM_NAME_FEEDER_TO_OBSERVER, MemoryRole::CREATE_ONLY);
         shm_log.UpdateHeartbeat();
         auto [ring_buffer_log] = shm_log.GetObjects();
 
         HotPathLogger::Init(ring_buffer_log);
-        HOT_INFO << "MD Feeder started!" << Endl;
+        HOT_INFO << "Feeder started!" << Endl;
 
-        RemoveSharedMemory(SHM_NAME_MD_FEEDER_TO_TRADING_ENGINE);
-        ShmMdFeederToTradingEngine shm_market_data(SHM_NAME_MD_FEEDER_TO_TRADING_ENGINE, MemoryRole::CREATE_ONLY);
+        RemoveSharedMemory(SHM_NAME_FEEDER_TO_TRADER);
+        ShmFeederToTrader shm_market_data(SHM_NAME_FEEDER_TO_TRADER, MemoryRole::CREATE_ONLY);
         shm_market_data.UpdateHeartbeat();
         auto [ring_buffer_md] = shm_market_data.GetObjects();
         HOT_INFO << "Market Data shared memory created" << Endl;
@@ -97,7 +97,7 @@ int RunMdFeeder() {
         return 1;
     }
 
-    HOT_INFO << "Finishing MD Feeder" << Endl;
+    HOT_INFO << "Finishing Feeder" << Endl;
     return 0;
 }
 
