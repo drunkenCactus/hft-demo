@@ -56,7 +56,7 @@ void ProcessLog(const char* const shm_name, const std::string& logfile_path) {
     std::ofstream logfile;
     logfile.open(logfile_path, std::ios::app);
     if (!logfile.is_open()) {
-        LOG_ERROR << "Сannot open logfile " << logfile_path << Endl;
+        LOG_ERROR << "Cannot open logfile " << logfile_path << Endl;
         std::exit(1);
     }
 
