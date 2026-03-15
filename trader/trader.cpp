@@ -11,22 +11,6 @@ constexpr uint32_t CONSUMER_ID = 0;
 constexpr uint32_t RECONNECT_TIMEOUT_MS = 100;
 constexpr uint32_t LIVENESS_TRESHOLD_SECONDS = 5;
 
-void DoStrategy(const BestBidAskRingBufferData& market_data) {
-    auto [bid_px, bid_qty] = market_data.best_bid;
-    auto [ask_px, ask_qty] = market_data.best_ask;
-    if (bid_px == 0.0 || ask_px == 0.0) {
-        return;
-    }
-    double spread = ask_px - bid_px;
-    if (spread >= 0.2) {
-        double buy_price = bid_px + 0.01;
-        double sell_price = ask_px - 0.01;
-        double order_qty = 0.001;
-        HOT_INFO << "BUY {" << buy_price << "," << order_qty << "}" << Endl;
-        HOT_INFO << "SELL {" << sell_price << "," << order_qty << "}" << Endl;
-    }
-}
-
 }  // namespace
 
 int RunTrader() {
@@ -43,10 +27,10 @@ int RunTrader() {
     HotPathLogger::Init(ring_buffer_log);
     HOT_INFO << "Trader started!" << Endl;
 
-    std::unique_ptr<ShmFeederToTrader> shm_market_data = nullptr;
+    std::unique_ptr<ShmMarketData> shm_market_data = nullptr;
     while (shm_market_data == nullptr) {
         try {
-            shm_market_data = std::make_unique<ShmFeederToTrader>(SHM_NAME_FEEDER_TO_TRADER, MemoryRole::OPEN_ONLY);
+            shm_market_data = std::make_unique<ShmMarketData>(SHM_NAME_MARKET_DATA, MemoryRole::OPEN_ONLY);
         } catch (const ShmVersionConflict& e) {
             HOT_ERROR << e.what() << Endl;
             return 1;
@@ -57,22 +41,43 @@ int RunTrader() {
     }
     HOT_INFO << "Market Data shared memory opened" << Endl;
 
-    auto [ring_buffer_feeder] = shm_market_data->GetObjects();
-    ring_buffer_feeder->ResetConsumer(CONSUMER_ID);
+    auto [rb_order_book_updates, rb_trades, order_book_snp] = shm_market_data->GetObjects();
+    rb_order_book_updates->ResetConsumer(CONSUMER_ID);
+    rb_trades->ResetConsumer(CONSUMER_ID);
 
-    BestBidAskRingBufferData market_data;
-    while (true) {
-        shm_log->UpdateHeartbeat();
-
-        ReadResult result = ring_buffer_feeder->Read(market_data, CONSUMER_ID);
-        if (result == ReadResult::SUCCESS) {
-            DoStrategy(market_data);
-        } else if (result == ReadResult::CONSUMER_IS_DISABLED) {
+    auto has_ring_buffer_reading_error = [&shm_market_data](ReadResult result) {
+        if (result == ReadResult::CONSUMER_IS_DISABLED) {
             HOT_ERROR << "Consumer is disabled. Exiting" << Endl;
-            return 1;
+            return true;
         } else if (!shm_market_data->IsProducerAlive(LIVENESS_TRESHOLD_SECONDS)) {
             HOT_ERROR << "Producer is dead. Exiting" << Endl;
-            return 1;
+            return true;
+        }
+        return false;
+    };
+
+    OrderBookUpdate order_book_update;
+    Trade trade;
+
+    while (true) {
+        shm_log->UpdateHeartbeat();
+        {
+            ReadResult result = rb_order_book_updates->Read(order_book_update, CONSUMER_ID);
+            if (result == ReadResult::SUCCESS) {
+                HOT_INFO << "DEPTH type:" << static_cast<uint8_t>(order_book_update.type)
+                         << "; price:" << order_book_update.price
+                         << "; quantity:" << order_book_update.quantity << Endl;
+            } else if (has_ring_buffer_reading_error(result)) {
+                return 1;
+            }
+        }
+        {
+            ReadResult result = rb_trades->Read(trade, CONSUMER_ID);
+            if (result == ReadResult::SUCCESS) {
+                HOT_INFO << "TRADE price:" << trade.price << "; quantity:" << trade.quantity << Endl;
+            } else if (has_ring_buffer_reading_error(result)) {
+                return 1;
+            }
         }
     }
 

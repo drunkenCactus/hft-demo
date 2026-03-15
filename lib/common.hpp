@@ -17,4 +17,10 @@ inline uint64_t NowNanoseconds() noexcept {
     ).count();
 }
 
+inline uint64_t NowMicroseconds() noexcept {
+    return std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::system_clock::now().time_since_epoch()
+    ).count();
+}
+
 }  // namespace hft

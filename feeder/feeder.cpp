@@ -1,4 +1,5 @@
 #include "binance_client.hpp"
+#include "parser.hpp"
 
 #include <lib/interprocess/hot_path_logger.hpp>
 #include <lib/interprocess/interprocess.hpp>
@@ -9,51 +10,9 @@ namespace hft {
 
 namespace {
 
-const std::string HOST = "stream.binance.com";
-const std::string PORT = "9443";
-const std::string TARGET = "/ws/btcusdt@depth5@100ms";
-
-class OrderBook {
-public:
-    bool Parse(const std::string& raw_data) {
-        rapidjson::Document json_struct;
-        json_struct.Parse(raw_data.c_str());
-        if (json_struct.HasParseError()) {
-            return false;
-        }
-
-        if (json_struct.HasMember("bids") &&  json_struct["bids"].IsArray() &&
-            json_struct.HasMember("asks") &&  json_struct["asks"].IsArray()
-        ) {
-            bids_.clear();
-            asks_.clear();
-            for (const auto& v : json_struct["bids"].GetArray()) {
-                bids_.emplace_back(
-                    std::stod(v[0].GetString()),
-                    std::stod(v[1].GetString())
-                );
-            }
-            for (const auto& v : json_struct["asks"].GetArray()) {
-                asks_.emplace_back(
-                    std::stod(v[0].GetString()),
-                    std::stod(v[1].GetString())
-                );
-            }
-            return true;
-        } else {
-            return false;
-        }
-    }
-
-    void FillBestBidAskData(BestBidAskRingBufferData& data) const noexcept {
-        data.best_bid = bids_.empty() ? std::pair<double, double>{0.0, 0.0} : bids_.front();
-        data.best_ask = asks_.empty() ? std::pair<double, double>{0.0, 0.0} : asks_.front();
-    }
-
-private:
-    std::vector<std::pair<double, double>> bids_;
-    std::vector<std::pair<double, double>> asks_;
-};
+constexpr const char* HOST = "stream.binance.com";
+constexpr const char* PORT = "9443";
+constexpr const char* TARGET = "/stream?streams=btcusdt@depth@100ms/btcusdt@trade&timeUnit=microsecond";
 
 }  // namespace
 
@@ -67,28 +26,30 @@ int RunFeeder() {
         HotPathLogger::Init(ring_buffer_log);
         HOT_INFO << "Feeder started!" << Endl;
 
-        RemoveSharedMemory(SHM_NAME_FEEDER_TO_TRADER);
-        ShmFeederToTrader shm_market_data(SHM_NAME_FEEDER_TO_TRADER, MemoryRole::CREATE_ONLY);
+        RemoveSharedMemory(SHM_NAME_MARKET_DATA);
+        ShmMarketData shm_market_data(SHM_NAME_MARKET_DATA, MemoryRole::CREATE_ONLY);
         shm_market_data.UpdateHeartbeat();
-        auto [ring_buffer_md] = shm_market_data.GetObjects();
+        auto [rb_order_book_updates, rb_trades, order_book_snp] = shm_market_data.GetObjects();
         HOT_INFO << "Market Data shared memory created" << Endl;
 
         BinanceWsClient client(HOST, PORT, TARGET);
         HOT_INFO << "Binance websocket connected" << Endl;
 
-        OrderBook book;
-        BestBidAskRingBufferData data;
+        auto order_book_update_callback = [rb_order_book_updates](const OrderBookUpdate& order_book_update) {
+            rb_order_book_updates->Write(order_book_update);
+        };
+
+        auto trade_callback = [rb_trades](const Trade& trade) {
+            rb_trades->Write(trade);
+        };
 
         while (true) {
             shm_log.UpdateHeartbeat();
             shm_market_data.UpdateHeartbeat();
 
-            std::string message = client.Read();
-            if (book.Parse(message)) {
-                book.FillBestBidAskData(data);
-                ring_buffer_md->Write(data);
-            } else {
-                HOT_WARNING << "Parsing error";
+            std::string_view message = client.Read();
+            if (!ParseEvent(message, order_book_update_callback, trade_callback)) {
+                HOT_WARNING << "Parsing error" << Endl;
             }
         }
 

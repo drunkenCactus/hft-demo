@@ -31,7 +31,7 @@ HotPathLogger::Formatter& HotPathLogger::Formatter::operator<<(const TypeEndl&) 
     return *this;
 }
 
-void HotPathLogger::Write(const ObserverRingBufferData& data) noexcept {
+void HotPathLogger::Write(const ObserverData& data) noexcept {
     ring_buffer_->Write(data);
 }
 
