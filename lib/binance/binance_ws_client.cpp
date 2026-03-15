@@ -1,4 +1,4 @@
-#include "binance_client.hpp"
+#include "binance_ws_client.hpp"
 
 #include <boost/asio.hpp>
 #include <boost/beast/core/buffers_range.hpp>
@@ -26,8 +26,8 @@ std::string_view BinanceWsClient::Read() {
 
 boost::beast::websocket::stream<BinanceWsClient::SslStream> BinanceWsClient::CreateWebsocket(
     std::string_view host,
-    std::string_view port)
-{
+    std::string_view port
+) {
     boost::asio::ssl::context ctx(boost::asio::ssl::context::tlsv12_client);
     ctx.set_verify_mode(boost::asio::ssl::verify_none);
     boost::asio::io_context ioc;

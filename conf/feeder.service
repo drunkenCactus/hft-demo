@@ -9,10 +9,11 @@ Group=hft-group
 WorkingDirectory=/opt/hft
 ExecStart=/opt/hft/bin/feeder/feeder
 Restart=always
-RestartSec=10
+RestartSec=60
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=hft-feeder
+LimitCORE=infinity
 
 [Install]
 WantedBy=multi-user.target
