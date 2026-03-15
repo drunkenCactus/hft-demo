@@ -31,7 +31,8 @@ private:
 
     boost::beast::websocket::stream<SslStream> CreateWebsocket(
         std::string_view host,
-        std::string_view port);
+        std::string_view port
+    );
 
 private:
     boost::beast::websocket::stream<SslStream> websocket_;

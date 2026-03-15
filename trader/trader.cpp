@@ -1,3 +1,5 @@
+#include <lib/binance/binance_api_client.hpp>
+#include <lib/binance/parser.hpp>
 #include <lib/interprocess/hot_path_logger.hpp>
 #include <lib/interprocess/interprocess.hpp>
 
@@ -10,6 +12,81 @@ namespace {
 constexpr uint32_t CONSUMER_ID = 0;
 constexpr uint32_t RECONNECT_TIMEOUT_MS = 100;
 constexpr uint32_t LIVENESS_TRESHOLD_SECONDS = 5;
+
+class OrderBookProcessor {
+public:
+    OrderBookProcessor(OrderBookUpdateRingBuffer* buffer)
+        : buffer_(buffer)
+        , binance_api_client_("BTCUSDT", ORDER_BOOK_DEPTH)
+    {}
+
+    [[nodiscard]] bool ProcessUpdate() {
+        OrderBookUpdate update;
+        ReadResult result = buffer_->Read(update, CONSUMER_ID);
+        if (result == ReadResult::SUCCESS) {
+            if (update.first_update_id > snapshot_.last_update_id + 1) {
+                // order_book is corrupted
+                HOT_WARNING << "Order book snapshot is corrupted" << Endl;
+                if (!ResetSnapshot()) {
+                    return false;
+                }
+            } else if (update.last_update_id < snapshot_.last_update_id) {
+                // event is too old
+                HOT_WARNING << "Order book update is too old. Skip it" << Endl;
+            } else {
+                // update local order book
+                snapshot_.last_update_id = update.last_update_id;
+            }
+        } else if (result == ReadResult::CONSUMER_IS_DISABLED) {
+            HOT_ERROR << "Consumer for order book updates is disabled" << Endl;
+            return false;
+        }
+        return true;
+    }
+
+private:
+    [[nodiscard]] bool ResetSnapshot() {
+        std::string_view response = binance_api_client_.GetOrderBookShapshot();
+        if (!ParseOrderBookSnapshot(
+            response,
+            [this](const OrderBookSnapshot& value) {
+                snapshot_ = value;
+            }
+        )) {
+            HOT_ERROR << "Order book snapshot parsing error" << Endl;
+            return false;
+        }
+        HOT_INFO << "Order book snapshot resetted successfully" << Endl;
+        return true;
+    }
+
+private:
+    OrderBookUpdateRingBuffer* buffer_;
+    BinanceApiClient binance_api_client_;
+    OrderBookSnapshot snapshot_;
+};
+
+class TradeProcessor {
+public:
+    TradeProcessor(TradeRingBuffer* buffer)
+        : buffer_(buffer)
+    {}
+
+    [[nodiscard]] bool ProcessTrade() {
+        Trade trade;
+        ReadResult result = buffer_->Read(trade, CONSUMER_ID);
+        if (result == ReadResult::SUCCESS) {
+            // process trade
+        } else if (result == ReadResult::CONSUMER_IS_DISABLED) {
+            HOT_ERROR << "Consumer for trades is disabled" << Endl;
+            return false;
+        }
+        return true;
+    }
+
+private:
+    TradeRingBuffer* buffer_;
+};
 
 }  // namespace
 
@@ -27,6 +104,8 @@ int RunTrader() {
     HotPathLogger::Init(ring_buffer_log);
     HOT_INFO << "Trader started!" << Endl;
 
+    BinanceApiClient binance_api_client("BTCUSDT", ORDER_BOOK_DEPTH);
+
     std::unique_ptr<ShmMarketData> shm_market_data = nullptr;
     while (shm_market_data == nullptr) {
         try {
@@ -41,43 +120,24 @@ int RunTrader() {
     }
     HOT_INFO << "Market Data shared memory opened" << Endl;
 
-    auto [rb_order_book_updates, rb_trades, order_book_snp] = shm_market_data->GetObjects();
+    auto [rb_order_book_updates, rb_trades] = shm_market_data->GetObjects();
+    OrderBookProcessor order_book_processor(rb_order_book_updates);
+    TradeProcessor trade_processor(rb_trades);
+
     rb_order_book_updates->ResetConsumer(CONSUMER_ID);
     rb_trades->ResetConsumer(CONSUMER_ID);
 
-    auto has_ring_buffer_reading_error = [&shm_market_data](ReadResult result) {
-        if (result == ReadResult::CONSUMER_IS_DISABLED) {
-            HOT_ERROR << "Consumer is disabled. Exiting" << Endl;
-            return true;
-        } else if (!shm_market_data->IsProducerAlive(LIVENESS_TRESHOLD_SECONDS)) {
-            HOT_ERROR << "Producer is dead. Exiting" << Endl;
-            return true;
-        }
-        return false;
-    };
-
-    OrderBookUpdate order_book_update;
-    Trade trade;
-
     while (true) {
-        shm_log->UpdateHeartbeat();
-        {
-            ReadResult result = rb_order_book_updates->Read(order_book_update, CONSUMER_ID);
-            if (result == ReadResult::SUCCESS) {
-                HOT_INFO << "DEPTH type:" << static_cast<uint8_t>(order_book_update.type)
-                         << "; price:" << order_book_update.price
-                         << "; quantity:" << order_book_update.quantity << Endl;
-            } else if (has_ring_buffer_reading_error(result)) {
-                return 1;
-            }
+        if (!shm_market_data->IsProducerAlive(LIVENESS_TRESHOLD_SECONDS)) {
+            HOT_ERROR << "Producer is dead" << Endl;
+            return 1;
         }
-        {
-            ReadResult result = rb_trades->Read(trade, CONSUMER_ID);
-            if (result == ReadResult::SUCCESS) {
-                HOT_INFO << "TRADE price:" << trade.price << "; quantity:" << trade.quantity << Endl;
-            } else if (has_ring_buffer_reading_error(result)) {
-                return 1;
-            }
+        shm_log->UpdateHeartbeat();
+        if (!order_book_processor.ProcessUpdate()) {
+            return 1;
+        }
+        if (!trade_processor.ProcessTrade()) {
+            return 1;
         }
     }
 

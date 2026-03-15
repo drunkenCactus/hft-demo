@@ -22,14 +22,14 @@ using Trade = Trade_<CACHE_LINE_SIZE>;
 using OrderBookUpdateRingBuffer = SpmcRingBuffer<
     OrderBookUpdate,
     CACHE_LINE_SIZE,
-    1024 /*BufferLength*/,
+    4096 /*BufferLength*/,
     1 /*ConsumersCount*/
 >;
 
 using TradeRingBuffer = SpmcRingBuffer<
     Trade,
     CACHE_LINE_SIZE,
-    1024 /*BufferLength*/,
+    4096 /*BufferLength*/,
     1 /*ConsumersCount*/
 >;
 
@@ -38,8 +38,7 @@ using OrderBookSnapshot = OrderBookSnapshot_<CACHE_LINE_SIZE, ORDER_BOOK_DEPTH>;
 using ShmMarketData = SharedMemory<
     CACHE_LINE_SIZE,
     OrderBookUpdateRingBuffer,
-    TradeRingBuffer,
-    OrderBookSnapshot
+    TradeRingBuffer
 >;
 
 // * * * Any service -> Observer * * *

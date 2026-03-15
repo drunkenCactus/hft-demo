@@ -1,6 +1,5 @@
-#include "binance_client.hpp"
-#include "parser.hpp"
-
+#include <lib/binance/binance_ws_client.hpp>
+#include <lib/binance/parser.hpp>
 #include <lib/interprocess/hot_path_logger.hpp>
 #include <lib/interprocess/interprocess.hpp>
 
@@ -29,7 +28,7 @@ int RunFeeder() {
         RemoveSharedMemory(SHM_NAME_MARKET_DATA);
         ShmMarketData shm_market_data(SHM_NAME_MARKET_DATA, MemoryRole::CREATE_ONLY);
         shm_market_data.UpdateHeartbeat();
-        auto [rb_order_book_updates, rb_trades, order_book_snp] = shm_market_data.GetObjects();
+        auto [rb_order_book_updates, rb_trades] = shm_market_data.GetObjects();
         HOT_INFO << "Market Data shared memory created" << Endl;
 
         BinanceWsClient client(HOST, PORT, TARGET);

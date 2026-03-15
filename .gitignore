@@ -40,7 +40,10 @@
 # debug information files
 *.dwo
 
-# tmp dirs
+# configs
+.cursor
 .vscode
+
+# tmp dirs
 .build
 .cache
