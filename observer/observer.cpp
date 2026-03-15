@@ -35,7 +35,7 @@ int ProcessLogAttempt(const char* const shm_name, std::ofstream& logfile) {
     auto [ring_buffer] = shm->GetObjects();
     LOG_INFO << "Start receiving logs from {" << shm_name << "}" << Endl;
 
-    ObserverRingBufferData data;
+    ObserverData data;
     while (true) {
         ReadResult result = ring_buffer->Read(data);
         if (result == ReadResult::SUCCESS) {

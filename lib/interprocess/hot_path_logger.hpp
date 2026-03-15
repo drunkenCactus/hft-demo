@@ -45,10 +45,10 @@ private:
 
     private:
         HotPathLogger& logger_;
-        ObserverRingBufferData data_;
+        ObserverData data_;
         char* msg_pos_ = data_.message;
 
-        constexpr static uint32_t true_size_ = ObserverRingBufferData::message_size - 1;
+        constexpr static uint32_t true_size_ = ObserverData::message_size - 1;
         static_assert(true_size_ > 0);
     };
 
@@ -60,7 +60,7 @@ public:
     HotPathLogger& operator=(HotPathLogger&& other) = delete;
     ~HotPathLogger() = default;
 
-    void Write(const ObserverRingBufferData& data) noexcept;
+    void Write(const ObserverData& data) noexcept;
 
     void Create(ObserverRingBuffer* ring_buffer) noexcept;
 

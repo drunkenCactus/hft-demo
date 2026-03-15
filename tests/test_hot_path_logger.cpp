@@ -6,18 +6,18 @@
 
 using namespace hft;
 
-constexpr uint32_t TRUE_SIZE = ObserverRingBufferData::message_size - 1;
+constexpr uint32_t TRUE_SIZE = ObserverData::message_size - 1;
 
 TEST(HotPathLogger, MessageLength) {
     EXPECT_EQ(TRUE_SIZE, 118);
-    EXPECT_EQ(sizeof(ObserverRingBufferData), 128);
+    EXPECT_EQ(sizeof(ObserverData), 128);
 }
 
 TEST(HotPathLogger, StringLiterals) {
     ObserverRingBuffer buffer;
     HotPathLogger::Init(&buffer);
 
-    ObserverRingBufferData result;
+    ObserverData result;
     {
         HOT_INFO << "foo";
         // message would not be logged without "Endl"
@@ -51,7 +51,7 @@ TEST(HotPathLogger, Integers) {
     ObserverRingBuffer buffer;
     HotPathLogger::Init(&buffer);
 
-    ObserverRingBufferData result;
+    ObserverData result;
     {
         HOT_INFO << 123 << Endl;
         EXPECT_EQ(buffer.Read(result), ReadResult::SUCCESS);
@@ -69,7 +69,7 @@ TEST(HotPathLogger, Doubles) {
     ObserverRingBuffer buffer;
     HotPathLogger::Init(&buffer);
 
-    ObserverRingBufferData result;
+    ObserverData result;
     {
         HOT_INFO << 123.45 << Endl;
         EXPECT_EQ(buffer.Read(result), ReadResult::SUCCESS);
@@ -87,7 +87,7 @@ TEST(HotPathLogger, Common) {
     ObserverRingBuffer buffer;
     HotPathLogger::Init(&buffer);
 
-    ObserverRingBufferData result;
+    ObserverData result;
     HOT_INFO << "Int = " << 42 << ", double = " << 36.6 << Endl;
     EXPECT_EQ(buffer.Read(result), ReadResult::SUCCESS);
     EXPECT_EQ(std::string(result.message), std::string("Int = 42, double = 36.6"));

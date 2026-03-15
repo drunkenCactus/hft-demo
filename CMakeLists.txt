@@ -6,7 +6,7 @@ set(CMAKE_CXX_COMPILER clang++)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-find_package(Boost 1.83 REQUIRED COMPONENTS system thread)
+find_package(Boost 1.83 REQUIRED COMPONENTS thread)
 find_package(GTest REQUIRED)
 
 include_directories(
@@ -32,6 +32,7 @@ add_executable(feeder
     feeder/binance_client.cpp
     feeder/main.cpp
     feeder/feeder.cpp
+    feeder/parser.cpp
 )
 
 add_executable(trader
@@ -47,10 +48,12 @@ add_executable(observer
 add_executable(run_tests
     tests/main.cpp
     tests/test_hot_path_logger.cpp
+    tests/test_parser.cpp
     tests/test_shared_memory.cpp
     tests/test_spmc_ring_buffer.cpp
     tests/test_spsc_ring_buffer.cpp
     tests/utils.cpp
+    feeder/parser.cpp
 )
 
 target_link_libraries(feeder
