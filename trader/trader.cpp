@@ -1,4 +1,3 @@
-#include "lib/interprocess/ring_buffer_common.hpp"
 #include <lib/interprocess/hot_path_logger.hpp>
 #include <lib/interprocess/interprocess.hpp>
 

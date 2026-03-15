@@ -2,8 +2,6 @@
 
 #include <feeder/parser.hpp>
 
-#include <lib/interprocess/ring_buffer_data.hpp>
-
 #include <vector>
 
 using namespace hft;
