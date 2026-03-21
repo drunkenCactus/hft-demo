@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <type_traits>
 
 namespace hft {
 

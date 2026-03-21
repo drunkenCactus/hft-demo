@@ -2,6 +2,8 @@
 
 #include <lib/interprocess/shared_memory.hpp>
 
+#include <thread>
+
 using namespace hft;
 
 constexpr uint32_t ALIGNMENT = 8;

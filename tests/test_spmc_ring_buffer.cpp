@@ -5,6 +5,7 @@
 #include <lib/interprocess/spmc_ring_buffer.hpp>
 
 #include <cstdint>
+#include <thread>
 
 using namespace hft;
 

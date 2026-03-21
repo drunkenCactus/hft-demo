@@ -3,6 +3,7 @@
 
 #include <fstream>
 #include <thread>
+#include <vector>
 
 namespace hft {
 
@@ -39,7 +40,11 @@ int ProcessLogAttempt(const char* const shm_name, std::ofstream& logfile) {
     while (true) {
         ReadResult result = ring_buffer->Read(data);
         if (result == ReadResult::SUCCESS) {
-            const auto time = std::chrono::system_clock::time_point(std::chrono::nanoseconds(data.timestamp_ns));
+            const auto time = std::chrono::system_clock::time_point(
+                std::chrono::duration_cast<std::chrono::system_clock::duration>(
+                    std::chrono::nanoseconds(data.timestamp_ns)
+                )
+            );
             WriteLog(logfile, time, data.level, data.message);
         } else if (result == ReadResult::CONSUMER_IS_DISABLED) {
             LOG_WARNING << "Consumer for {" << shm_name << "} is disabled" << Endl;

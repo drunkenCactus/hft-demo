@@ -4,6 +4,7 @@
 #include <lib/interprocess/spsc_ring_buffer.hpp>
 
 #include <cstdint>
+#include <thread>
 
 using namespace hft;
 
