@@ -21,10 +21,10 @@ template <uint32_t Alignment, uint32_t Depth>
 struct alignas(Alignment) OrderBookSnapshot_ {
     MessageMeta meta;
     uint64_t last_update_id = 0;
-    double bids_prices[Depth];
-    double bids_quantities[Depth];
-    double asks_prices[Depth];
-    double asks_quantities[Depth];
+    uint64_t bids_prices[Depth]{};
+    uint64_t bids_quantities[Depth]{};
+    uint64_t asks_prices[Depth]{};
+    uint64_t asks_quantities[Depth]{};
     uint32_t bids_depth = 0;
     uint32_t asks_depth = 0;
     Symbol symbol = Symbol::UNKNOWN;
@@ -45,8 +45,8 @@ struct alignas(Alignment) OrderBookUpdate_ {
     MessageMeta meta;
     uint64_t first_update_id = 0;
     uint64_t last_update_id = 0;
-    double price = 0.0;
-    double quantity = 0.0;
+    uint64_t price = 0;
+    uint64_t quantity = 0;
     Type type = Type::BID;
     Symbol symbol = Symbol::UNKNOWN;
 };
@@ -54,8 +54,8 @@ struct alignas(Alignment) OrderBookUpdate_ {
 template <uint32_t Alignment>
 struct alignas(Alignment) Trade_ {
     MessageMeta meta;
-    double price = 0.0;
-    double quantity = 0.0;
+    uint64_t price = 0;
+    uint64_t quantity = 0;
     Symbol symbol = Symbol::UNKNOWN;
 };
 

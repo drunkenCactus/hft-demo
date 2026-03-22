@@ -77,6 +77,7 @@ add_executable(run_tests
     lib/binance/parser.cpp
     tests/main.cpp
     tests/test_hot_path_logger.cpp
+    tests/test_local_order_book.cpp
     tests/test_parser.cpp
     tests/test_shared_memory.cpp
     tests/test_spmc_ring_buffer.cpp

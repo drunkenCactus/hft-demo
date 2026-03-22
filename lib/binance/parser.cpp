@@ -1,8 +1,8 @@
 #include "parser.hpp"
 
 #include <lib/common.hpp>
-#include <charconv>
 #include <cstring>
+#include <limits>
 #include <rapidjson/document.h>
 
 namespace hft {
@@ -38,13 +38,124 @@ inline uint64_t EventTimeToMicroseconds(uint64_t raw) noexcept {
     return (raw >= EVENT_TIME_MICROSECOND_THRESHOLD) ? raw : raw * 1000;
 }
 
-// Parses double from [first, last); returns true if the whole range was consumed.
-bool ParseDouble(const char* first, const char* last, double& value) noexcept {
-    auto [ptr, ec] = std::from_chars(first, last, value);
-    return (ec == std::errc{} && ptr == last);
+// 10^0 .. 10^18 (index k => 10^k); enough for fixed decimal and PRICE_SHIFT/QUANTITY_SHIFT.
+constexpr uint64_t k_pow10_u64[19] = {
+    1ULL,
+    10ULL,
+    100ULL,
+    1'000ULL,
+    10'000ULL,
+    100'000ULL,
+    1'000'000ULL,
+    10'000'000ULL,
+    100'000'000ULL,
+    1'000'000'000ULL,
+    10'000'000'000ULL,
+    100'000'000'000ULL,
+    1'000'000'000'000ULL,
+    10'000'000'000'000ULL,
+    100'000'000'000'000ULL,
+    1'000'000'000'000'000ULL,
+    10'000'000'000'000'000ULL,
+    100'000'000'000'000'000ULL,
+    1'000'000'000'000'000'000ULL,
+};
+
+static_assert(PRICE_SHIFT <= 18U && QUANTITY_SHIFT <= 18U);
+
+constexpr uint64_t k_uint64_max = std::numeric_limits<uint64_t>::max();
+
+// Assembles int_part * 10^dp + frac_part * 10^fp into uint64_t; false if result would exceed UINT64_MAX.
+[[nodiscard]] bool AssembleFixedDecimalToUint64(
+    uint64_t int_part,
+    uint32_t decimal_places,
+    uint64_t frac_part,
+    uint32_t frac_pad,
+    uint64_t& out
+) noexcept {
+    const uint64_t scale_int = k_pow10_u64[decimal_places];
+    const uint64_t scale_frac = k_pow10_u64[frac_pad];
+
+    uint64_t term1 = 0;
+    if (int_part != 0U) {
+        if (int_part > k_uint64_max / scale_int) {
+            return false;
+        }
+        term1 = int_part * scale_int;
+    }
+
+    uint64_t term2 = 0;
+    if (frac_part != 0U) {
+        if (frac_part > k_uint64_max / scale_frac) {
+            return false;
+        }
+        term2 = frac_part * scale_frac;
+    }
+
+    if (term1 > k_uint64_max - term2) {
+        return false;
+    }
+    out = term1 + term2;
+    return true;
 }
 
-bool ParsePriceQuantity(const rapidjson::Value& arr, double& price, double& quantity) noexcept {
+// Parses decimal string as fixed-point uint64_t (scale 10^decimal_places). No floating-point.
+// Allowed characters are digits and at most one '.'; any other character yields false.
+// Single pass over the string; `decimal_places` must be <= 18 (see k_pow10_u64).
+bool ParseFixedDecimalString(const char* first, const char* last, uint32_t decimal_places, uint64_t& out) noexcept {
+    if (first >= last || decimal_places > 18U) {
+        return false;
+    }
+
+    const char* p = first;
+    uint64_t int_part = 0;
+    uint64_t frac_part = 0;
+    uint32_t frac_digits = 0;
+    bool has_digit = false;
+    bool saw_dot = false;
+
+    while (p < last) {
+        const char c = *p;
+        if (c >= '0' && c <= '9') {
+            const int digit = c - '0';
+            has_digit = true;
+            if (!saw_dot) {
+                if (int_part > (std::numeric_limits<uint64_t>::max() - static_cast<uint64_t>(digit)) / 10ULL) {
+                    return false;
+                }
+                int_part = int_part * 10ULL + static_cast<uint64_t>(digit);
+            } else {
+                if (frac_digits < decimal_places) {
+                    if (frac_part > (std::numeric_limits<uint64_t>::max() - static_cast<uint64_t>(digit)) / 10ULL) {
+                        return false;
+                    }
+                    frac_part = frac_part * 10ULL + static_cast<uint64_t>(digit);
+                    ++frac_digits;
+                }
+            }
+            ++p;
+            continue;
+        }
+        if (c == '.') {
+            if (saw_dot) {
+                return false;
+            }
+            saw_dot = true;
+            ++p;
+            continue;
+        }
+        return false;
+    }
+
+    if (!has_digit) {
+        return false;
+    }
+
+    const uint32_t frac_pad = decimal_places - frac_digits;
+    return AssembleFixedDecimalToUint64(int_part, decimal_places, frac_part, frac_pad, out);
+}
+
+bool ParsePriceQuantity(const rapidjson::Value& arr, uint64_t& price, uint64_t& quantity) noexcept {
     if (!arr.IsArray() || arr.Size() < 2) {
         return false;
     }
@@ -57,8 +168,8 @@ bool ParsePriceQuantity(const rapidjson::Value& arr, double& price, double& quan
     const char* price_end = price_start + p.GetStringLength();
     const char* qty_start = q.GetString();
     const char* qty_end = qty_start + q.GetStringLength();
-    if (!ParseDouble(price_start, price_end, price) ||
-        !ParseDouble(qty_start, qty_end, quantity)) {
+    if (!ParseFixedDecimalString(price_start, price_end, PRICE_SHIFT, price) ||
+        !ParseFixedDecimalString(qty_start, qty_end, QUANTITY_SHIFT, quantity)) {
         return false;
     }
     return true;
@@ -161,7 +272,7 @@ bool ParseTradeEvent(const rapidjson::Value& value, std::function<void(const Tra
     }
     const char* price_start = p->value.GetString();
     const char* price_end = price_start + p->value.GetStringLength();
-    if (!ParseDouble(price_start, price_end, out.price)) {
+    if (!ParseFixedDecimalString(price_start, price_end, PRICE_SHIFT, out.price)) {
         return false;
     }
 
@@ -171,7 +282,7 @@ bool ParseTradeEvent(const rapidjson::Value& value, std::function<void(const Tra
     }
     const char* qty_start = q->value.GetString();
     const char* qty_end = qty_start + q->value.GetStringLength();
-    if (!ParseDouble(qty_start, qty_end, out.quantity)) {
+    if (!ParseFixedDecimalString(qty_start, qty_end, QUANTITY_SHIFT, out.quantity)) {
         return false;
     }
 
