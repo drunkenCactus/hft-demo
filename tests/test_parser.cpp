@@ -2,9 +2,30 @@
 
 #include <lib/binance/parser.hpp>
 
+#include <cstdint>
 #include <vector>
 
 using namespace hft;
+
+namespace {
+
+constexpr uint64_t P = []() consteval {
+    uint64_t s = 1;
+    for (uint32_t i = 0; i < PRICE_SHIFT; ++i) {
+        s *= 10;
+    }
+    return s;
+}();
+
+constexpr uint64_t Q = []() consteval {
+    uint64_t s = 1;
+    for (uint32_t i = 0; i < QUANTITY_SHIFT; ++i) {
+        s *= 10;
+    }
+    return s;
+}();
+
+}  // namespace
 
 // --- ParseDepthEvent ---
 
@@ -28,23 +49,23 @@ TEST(Parser, ParseDepthEvent_Success_InvokesCallbackForEachBidAndAsk) {
     ASSERT_EQ(updates.size(), 4u);
 
     EXPECT_EQ(updates[0].type, OrderBookUpdate::Type::BID);
-    EXPECT_DOUBLE_EQ(updates[0].price, 0.0024);
-    EXPECT_DOUBLE_EQ(updates[0].quantity, 10.0);
+    EXPECT_EQ(updates[0].price, 240000ULL);
+    EXPECT_EQ(updates[0].quantity, 10ULL * Q);
     EXPECT_EQ(updates[0].first_update_id, 157u);
     EXPECT_EQ(updates[0].last_update_id, 160u);
     EXPECT_EQ(updates[0].symbol, Symbol::BTCUSDT);
 
     EXPECT_EQ(updates[1].type, OrderBookUpdate::Type::BID);
-    EXPECT_DOUBLE_EQ(updates[1].price, 0.0025);
-    EXPECT_DOUBLE_EQ(updates[1].quantity, 20.0);
+    EXPECT_EQ(updates[1].price, 250000ULL);
+    EXPECT_EQ(updates[1].quantity, 20ULL * Q);
 
     EXPECT_EQ(updates[2].type, OrderBookUpdate::Type::ASK);
-    EXPECT_DOUBLE_EQ(updates[2].price, 0.0026);
-    EXPECT_DOUBLE_EQ(updates[2].quantity, 100.0);
+    EXPECT_EQ(updates[2].price, 260000ULL);
+    EXPECT_EQ(updates[2].quantity, 100ULL * Q);
 
     EXPECT_EQ(updates[3].type, OrderBookUpdate::Type::ASK);
-    EXPECT_DOUBLE_EQ(updates[3].price, 0.0027);
-    EXPECT_DOUBLE_EQ(updates[3].quantity, 200.0);
+    EXPECT_EQ(updates[3].price, 270000ULL);
+    EXPECT_EQ(updates[3].quantity, 200ULL * Q);
 }
 
 TEST(Parser, ParseDepthEvent_Success_EventTimeMilliseconds_AutoConverted) {
@@ -193,8 +214,8 @@ TEST(Parser, ParseTradeEvent_Success_EventTimeMilliseconds_AutoConverted) {
 
     ASSERT_TRUE(ok);
     EXPECT_EQ(captured.symbol, Symbol::BTCUSDT);
-    EXPECT_DOUBLE_EQ(captured.price, 0.001);
-    EXPECT_DOUBLE_EQ(captured.quantity, 100.0);
+    EXPECT_EQ(captured.price, 100000ULL);      // 0.001 * 10^8
+    EXPECT_EQ(captured.quantity, 100ULL * Q);
     EXPECT_EQ(captured.meta.event_timestamp_microseconds, 1672515782136000u);
 }
 
@@ -214,8 +235,8 @@ TEST(Parser, ParseTradeEvent_Success_EventTimeMicroseconds_UsedAsIs) {
 
     ASSERT_TRUE(ok);
     EXPECT_EQ(captured.symbol, Symbol::BTCUSDT);
-    EXPECT_DOUBLE_EQ(captured.price, 0.001);
-    EXPECT_DOUBLE_EQ(captured.quantity, 100.0);
+    EXPECT_EQ(captured.price, 100000ULL);
+    EXPECT_EQ(captured.quantity, 100ULL * Q);
     EXPECT_EQ(captured.meta.event_timestamp_microseconds, 1672515782136123u);
 }
 
@@ -235,8 +256,8 @@ TEST(Parser, ParseTradeEvent_Success_ETHUSDT) {
 
     ASSERT_TRUE(ok);
     EXPECT_EQ(captured.symbol, Symbol::ETHUSDT);
-    EXPECT_DOUBLE_EQ(captured.price, 2500.5);
-    EXPECT_DOUBLE_EQ(captured.quantity, 0.25);
+    EXPECT_EQ(captured.price, 250050000000ULL);   // 2500.5 * 10^8
+    EXPECT_EQ(captured.quantity, 25000000ULL);    // 0.25 * 10^8
 }
 
 TEST(Parser, ParseTradeEvent_Failure_InvalidJson) {
@@ -297,6 +318,34 @@ TEST(Parser, ParseTradeEvent_Failure_InvalidQuantity) {
     EXPECT_FALSE(ok);
 }
 
+TEST(Parser, ParseTradeEvent_Failure_NegativePrice) {
+    const std::string json = R"({
+        "e": "trade",
+        "E": 1,
+        "s": "BTCUSDT",
+        "p": "-0.001",
+        "q": "100"
+    })";
+    bool ok = ParseTradeEvent(json, [](const Trade&) {});
+    EXPECT_FALSE(ok);
+}
+
+TEST(Parser, ParseDepthEvent_NegativeQuantity_SkipsLevel) {
+    const std::string json = R"({
+        "e": "depthUpdate",
+        "E": 1,
+        "s": "BTCUSDT",
+        "U": 0,
+        "u": 0,
+        "b": [["1", "-1"]],
+        "a": []
+    })";
+    std::vector<OrderBookUpdate> updates;
+    bool ok = ParseDepthEvent(json, [&updates](const OrderBookUpdate& u) { updates.push_back(u); });
+    EXPECT_TRUE(ok);
+    EXPECT_TRUE(updates.empty());
+}
+
 TEST(Parser, ParseTradeEvent_NullCallback_ReturnsTrueForValidJson) {
     const std::string json = R"({
         "e": "trade",
@@ -340,11 +389,11 @@ TEST(Parser, ParseEvent_DepthStream_InvokesOrderBookCallback) {
     ASSERT_EQ(updates.size(), 2u);
     EXPECT_FALSE(trade_called);
     EXPECT_EQ(updates[0].type, OrderBookUpdate::Type::BID);
-    EXPECT_DOUBLE_EQ(updates[0].price, 0.0024);
-    EXPECT_DOUBLE_EQ(updates[0].quantity, 10.0);
+    EXPECT_EQ(updates[0].price, 240000ULL);
+    EXPECT_EQ(updates[0].quantity, 10ULL * Q);
     EXPECT_EQ(updates[1].type, OrderBookUpdate::Type::ASK);
-    EXPECT_DOUBLE_EQ(updates[1].price, 0.0026);
-    EXPECT_DOUBLE_EQ(updates[1].quantity, 100.0);
+    EXPECT_EQ(updates[1].price, 260000ULL);
+    EXPECT_EQ(updates[1].quantity, 100ULL * Q);
 }
 
 TEST(Parser, ParseEvent_DepthStreamBtcusdtAtDepth_Equivalent) {
@@ -369,8 +418,8 @@ TEST(Parser, ParseEvent_DepthStreamBtcusdtAtDepth_Equivalent) {
 
     ASSERT_TRUE(ok);
     ASSERT_EQ(updates.size(), 1u);
-    EXPECT_DOUBLE_EQ(updates[0].price, 1.0);
-    EXPECT_DOUBLE_EQ(updates[0].quantity, 2.0);
+    EXPECT_EQ(updates[0].price, 1ULL * P);
+    EXPECT_EQ(updates[0].quantity, 2ULL * Q);
 }
 
 TEST(Parser, ParseEvent_TradeStream_InvokesTradeCallback) {
@@ -396,8 +445,8 @@ TEST(Parser, ParseEvent_TradeStream_InvokesTradeCallback) {
     ASSERT_TRUE(ok);
     EXPECT_FALSE(depth_called);
     EXPECT_EQ(trade_captured.symbol, Symbol::BTCUSDT);
-    EXPECT_DOUBLE_EQ(trade_captured.price, 0.001);
-    EXPECT_DOUBLE_EQ(trade_captured.quantity, 100.0);
+    EXPECT_EQ(trade_captured.price, 100000ULL);
+    EXPECT_EQ(trade_captured.quantity, 100ULL * Q);
 }
 
 TEST(Parser, ParseEvent_OtherInstrument_AcceptedBySuffix) {
@@ -420,8 +469,8 @@ TEST(Parser, ParseEvent_OtherInstrument_AcceptedBySuffix) {
 
     ASSERT_TRUE(ok);
     EXPECT_EQ(trade_captured.symbol, Symbol::ETHUSDT);
-    EXPECT_DOUBLE_EQ(trade_captured.price, 2500.0);
-    EXPECT_DOUBLE_EQ(trade_captured.quantity, 1.0);
+    EXPECT_EQ(trade_captured.price, 2500ULL * P);
+    EXPECT_EQ(trade_captured.quantity, 1ULL * Q);
 }
 
 TEST(Parser, ParseEvent_Failure_InvalidJson) {
@@ -476,15 +525,15 @@ TEST(Parser, ParseOrderBookSnapshot_Success) {
     EXPECT_EQ(captured.bids_depth, 2u);
     EXPECT_EQ(captured.asks_depth, 2u);
 
-    EXPECT_DOUBLE_EQ(captured.bids_prices[0], 4.0);
-    EXPECT_DOUBLE_EQ(captured.bids_quantities[0], 431.0);
-    EXPECT_DOUBLE_EQ(captured.bids_prices[1], 3.5);
-    EXPECT_DOUBLE_EQ(captured.bids_quantities[1], 100.0);
+    EXPECT_EQ(captured.bids_prices[0], 4ULL * P);
+    EXPECT_EQ(captured.bids_quantities[0], 431ULL * Q);
+    EXPECT_EQ(captured.bids_prices[1], 350000000ULL);   // 3.5 * 10^8
+    EXPECT_EQ(captured.bids_quantities[1], 100ULL * Q);
 
-    EXPECT_DOUBLE_EQ(captured.asks_prices[0], 4.000002);
-    EXPECT_DOUBLE_EQ(captured.asks_quantities[0], 12.0);
-    EXPECT_DOUBLE_EQ(captured.asks_prices[1], 4.000003);
-    EXPECT_DOUBLE_EQ(captured.asks_quantities[1], 50.0);
+    EXPECT_EQ(captured.asks_prices[0], 400000200ULL);   // 4.000002 * 10^8
+    EXPECT_EQ(captured.asks_quantities[0], 12ULL * Q);
+    EXPECT_EQ(captured.asks_prices[1], 400000300ULL);
+    EXPECT_EQ(captured.asks_quantities[1], 50ULL * Q);
 }
 
 TEST(Parser, ParseOrderBookSnapshot_Success_EmptyBidsAndAsks) {

@@ -1,3 +1,4 @@
+#include <lib/local_order_book.hpp>
 #include <lib/binance/binance_api_client.hpp>
 #include <lib/binance/parser.hpp>
 #include <lib/interprocess/hot_path_logger.hpp>
@@ -24,18 +25,22 @@ public:
         OrderBookUpdate update;
         ReadResult result = buffer_->Read(update, CONSUMER_ID);
         if (result == ReadResult::SUCCESS) {
-            if (update.first_update_id > snapshot_.last_update_id + 1) {
+            if (update.first_update_id > order_book_.LastUpdateId() + 1) {
                 // order_book is corrupted
                 HOT_WARNING << "Order book snapshot is corrupted" << Endl;
                 if (!ResetSnapshot()) {
                     return false;
                 }
-            } else if (update.last_update_id < snapshot_.last_update_id) {
+            } else if (update.last_update_id < order_book_.LastUpdateId()) {
                 // event is too old
                 HOT_WARNING << "Order book update is too old. Skip it" << Endl;
             } else {
                 // update local order book
-                snapshot_.last_update_id = update.last_update_id;
+                if (update.type == OrderBookUpdate::Type::BID) {
+                    order_book_.UpdateBid(update.last_update_id, update.price, update.quantity);
+                } else {
+                    order_book_.UpdateAsk(update.last_update_id, update.price, update.quantity);
+                }
             }
         } else if (result == ReadResult::CONSUMER_IS_DISABLED) {
             HOT_ERROR << "Consumer for order book updates is disabled" << Endl;
@@ -49,21 +54,30 @@ private:
         std::string_view response = binance_api_client_.GetOrderBookShapshot();
         if (!ParseOrderBookSnapshot(
             response,
-            [this](const OrderBookSnapshot& value) {
-                snapshot_ = value;
+            [this](const OrderBookSnapshot& snapshot) {
+                order_book_.Init(
+                    snapshot.last_update_id,
+                    snapshot.bids_prices,
+                    snapshot.bids_quantities,
+                    snapshot.bids_depth,
+                    snapshot.asks_prices,
+                    snapshot.asks_quantities,
+                    snapshot.asks_depth
+                );
             }
         )) {
             HOT_ERROR << "Order book snapshot parsing error" << Endl;
             return false;
+        } else {
+            HOT_INFO << "Order book snapshot resetted successfully" << Endl;
+            return true;
         }
-        HOT_INFO << "Order book snapshot resetted successfully" << Endl;
-        return true;
     }
 
 private:
     OrderBookUpdateRingBuffer* buffer_;
     BinanceApiClient binance_api_client_;
-    OrderBookSnapshot snapshot_;
+    OrderBook<ORDER_BOOK_DEPTH> order_book_;
 };
 
 class TradeProcessor {

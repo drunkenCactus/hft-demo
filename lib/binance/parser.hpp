@@ -7,6 +7,9 @@
 
 namespace hft {
 
+constexpr uint32_t PRICE_SHIFT = 8;
+constexpr uint32_t QUANTITY_SHIFT = 8;
+
 bool ParseEvent(
     std::string_view json,
     std::function<void(const OrderBookUpdate&)> order_book_update_callback,
