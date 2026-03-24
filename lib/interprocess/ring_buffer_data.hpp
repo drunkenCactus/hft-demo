@@ -57,6 +57,7 @@ struct alignas(Alignment) Trade_ {
     uint64_t price = 0;
     uint64_t quantity = 0;
     Symbol symbol = Symbol::UNKNOWN;
+    bool is_buyer_maker = false;
 };
 
 template <uint32_t Alignment, uint32_t DataSize>

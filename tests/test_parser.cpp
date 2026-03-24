@@ -217,6 +217,7 @@ TEST(Parser, ParseTradeEvent_Success_EventTimeMilliseconds_AutoConverted) {
     EXPECT_EQ(captured.price, 100000ULL);      // 0.001 * 10^8
     EXPECT_EQ(captured.quantity, 100ULL * Q);
     EXPECT_EQ(captured.meta.event_timestamp_microseconds, 1672515782136000u);
+    EXPECT_TRUE(captured.is_buyer_maker);
 }
 
 TEST(Parser, ParseTradeEvent_Success_EventTimeMicroseconds_UsedAsIs) {
@@ -225,7 +226,8 @@ TEST(Parser, ParseTradeEvent_Success_EventTimeMicroseconds_UsedAsIs) {
         "E": 1672515782136123,
         "s": "BTCUSDT",
         "p": "0.001",
-        "q": "100"
+        "q": "100",
+        "m": false
     })";
 
     Trade captured;
@@ -238,6 +240,7 @@ TEST(Parser, ParseTradeEvent_Success_EventTimeMicroseconds_UsedAsIs) {
     EXPECT_EQ(captured.price, 100000ULL);
     EXPECT_EQ(captured.quantity, 100ULL * Q);
     EXPECT_EQ(captured.meta.event_timestamp_microseconds, 1672515782136123u);
+    EXPECT_FALSE(captured.is_buyer_maker);
 }
 
 TEST(Parser, ParseTradeEvent_Success_ETHUSDT) {
@@ -246,7 +249,8 @@ TEST(Parser, ParseTradeEvent_Success_ETHUSDT) {
         "E": 1,
         "s": "ETHUSDT",
         "p": "2500.5",
-        "q": "0.25"
+        "q": "0.25",
+        "m": true
     })";
 
     Trade captured;
@@ -258,6 +262,7 @@ TEST(Parser, ParseTradeEvent_Success_ETHUSDT) {
     EXPECT_EQ(captured.symbol, Symbol::ETHUSDT);
     EXPECT_EQ(captured.price, 250050000000ULL);   // 2500.5 * 10^8
     EXPECT_EQ(captured.quantity, 25000000ULL);    // 0.25 * 10^8
+    EXPECT_TRUE(captured.is_buyer_maker);
 }
 
 TEST(Parser, ParseTradeEvent_Failure_InvalidJson) {
@@ -289,6 +294,31 @@ TEST(Parser, ParseTradeEvent_Failure_MissingQuantity) {
         "E": 1,
         "s": "BTCUSDT",
         "p": "0.001"
+    })";
+    bool ok = ParseTradeEvent(json, [](const Trade&) {});
+    EXPECT_FALSE(ok);
+}
+
+TEST(Parser, ParseTradeEvent_Failure_MissingBuyerMaker) {
+    const std::string json = R"({
+        "e": "trade",
+        "E": 1,
+        "s": "BTCUSDT",
+        "p": "0.001",
+        "q": "100"
+    })";
+    bool ok = ParseTradeEvent(json, [](const Trade&) {});
+    EXPECT_FALSE(ok);
+}
+
+TEST(Parser, ParseTradeEvent_Failure_InvalidBuyerMaker) {
+    const std::string json = R"({
+        "e": "trade",
+        "E": 1,
+        "s": "BTCUSDT",
+        "p": "0.001",
+        "q": "100",
+        "m": "true"
     })";
     bool ok = ParseTradeEvent(json, [](const Trade&) {});
     EXPECT_FALSE(ok);
@@ -352,7 +382,8 @@ TEST(Parser, ParseTradeEvent_NullCallback_ReturnsTrueForValidJson) {
         "E": 1,
         "s": "BTCUSDT",
         "p": "0.001",
-        "q": "100"
+        "q": "100",
+        "m": false
     })";
     bool ok = ParseTradeEvent(json, nullptr);
     EXPECT_TRUE(ok);
@@ -430,7 +461,8 @@ TEST(Parser, ParseEvent_TradeStream_InvokesTradeCallback) {
             "E": 1672515782136,
             "s": "BTCUSDT",
             "p": "0.001",
-            "q": "100"
+            "q": "100",
+            "m": false
         }
     })";
 
@@ -447,6 +479,7 @@ TEST(Parser, ParseEvent_TradeStream_InvokesTradeCallback) {
     EXPECT_EQ(trade_captured.symbol, Symbol::BTCUSDT);
     EXPECT_EQ(trade_captured.price, 100000ULL);
     EXPECT_EQ(trade_captured.quantity, 100ULL * Q);
+    EXPECT_FALSE(trade_captured.is_buyer_maker);
 }
 
 TEST(Parser, ParseEvent_OtherInstrument_AcceptedBySuffix) {
@@ -457,7 +490,8 @@ TEST(Parser, ParseEvent_OtherInstrument_AcceptedBySuffix) {
             "E": 1,
             "s": "ETHUSDT",
             "p": "2500",
-            "q": "1"
+            "q": "1",
+            "m": true
         }
     })";
 
@@ -471,6 +505,7 @@ TEST(Parser, ParseEvent_OtherInstrument_AcceptedBySuffix) {
     EXPECT_EQ(trade_captured.symbol, Symbol::ETHUSDT);
     EXPECT_EQ(trade_captured.price, 2500ULL * P);
     EXPECT_EQ(trade_captured.quantity, 1ULL * Q);
+    EXPECT_TRUE(trade_captured.is_buyer_maker);
 }
 
 TEST(Parser, ParseEvent_Failure_InvalidJson) {

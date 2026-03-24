@@ -286,6 +286,12 @@ bool ParseTradeEvent(const rapidjson::Value& value, std::function<void(const Tra
         return false;
     }
 
+    const auto buyer_maker = value.FindMember("m");
+    if (buyer_maker == value.MemberEnd() || !buyer_maker->value.IsBool()) {
+        return false;
+    }
+    out.is_buyer_maker = buyer_maker->value.GetBool();
+
     if (callback) {
         callback(out);
     }
