@@ -64,6 +64,7 @@ add_executable(feeder
 add_executable(trader
     lib/binance/binance_api_client.cpp
     lib/binance/parser.cpp
+    lib/trade_flow_window.cpp
     trader/main.cpp
     trader/trader.cpp
 )
@@ -75,6 +76,7 @@ add_executable(observer
 
 add_executable(run_tests
     lib/binance/parser.cpp
+    lib/trade_flow_window.cpp
     tests/main.cpp
     tests/test_hot_path_logger.cpp
     tests/test_local_order_book.cpp
@@ -82,6 +84,7 @@ add_executable(run_tests
     tests/test_shared_memory.cpp
     tests/test_spmc_ring_buffer.cpp
     tests/test_spsc_ring_buffer.cpp
+    tests/test_trade_flow_window.cpp
     tests/utils.cpp
 )
 

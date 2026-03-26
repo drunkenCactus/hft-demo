@@ -216,7 +216,7 @@ TEST(OrderBookSide, Descending_InsertNewLevel) {
 }
 
 TEST(OrderBook, LastUpdateId) {
-    OrderBook<DEPTH> book;
+    OrderBook_<DEPTH> book;
     EXPECT_EQ(book.LastUpdateId(), 0U);
 
     const std::array<uint64_t, 0> empty{};
@@ -231,7 +231,7 @@ TEST(OrderBook, LastUpdateId) {
 }
 
 TEST(OrderBook, Init_GetBestBid_GetBestAsk) {
-    OrderBook<DEPTH> book;
+    OrderBook_<DEPTH> book;
     const std::array<uint64_t, 2> bid_prices = {105, 100};
     const std::array<uint64_t, 2> bid_qty = {1, 2};
     const std::array<uint64_t, 2> ask_prices = {110, 115};
@@ -239,11 +239,11 @@ TEST(OrderBook, Init_GetBestBid_GetBestAsk) {
 
     book.Init(1, bid_prices.data(), bid_qty.data(), 2, ask_prices.data(), ask_qty.data(), 2);
 
-    const OrderBookRow bid = book.GetBestBid();
+    const auto& bid = book.GetBestBid();
     EXPECT_EQ(bid.price, 105U);
     EXPECT_EQ(bid.quantity, 1U);
 
-    const OrderBookRow ask = book.GetBestAsk();
+    const auto& ask = book.GetBestAsk();
     EXPECT_EQ(ask.price, 110U);
     EXPECT_EQ(ask.quantity, 3U);
 
@@ -251,10 +251,37 @@ TEST(OrderBook, Init_GetBestBid_GetBestAsk) {
     EXPECT_EQ(book.GetBids()[0].price, bid.price);
     ASSERT_EQ(book.GetAsks().size(), 2U);
     EXPECT_EQ(book.GetAsks()[0].price, ask.price);
+
+    {
+        const auto top = book.GetTopBids(1);
+        ASSERT_EQ(top.size(), 1U);
+    }
+    {
+        const auto top = book.GetTopBids(2);
+        ASSERT_EQ(top.size(), 2U);
+    }
+    {
+        const auto top = book.GetTopBids(3);
+        ASSERT_EQ(top.size(), 2U);
+    }
+    {
+        const auto top = book.GetTopAsks(1);
+        ASSERT_EQ(top.size(), 1U);
+    }
+    {
+        const auto top = book.GetTopAsks(2);
+        ASSERT_EQ(top.size(), 2U);
+    }
+    {
+        const auto top = book.GetTopAsks(3);
+        ASSERT_EQ(top.size(), 2U);
+    }
+    EXPECT_TRUE(book.GetTopBids(0).empty());
+    EXPECT_TRUE(book.GetTopAsks(0).empty());
 }
 
 TEST(OrderBook, UpdateBid_UpdateAsk) {
-    OrderBook<DEPTH> book;
+    OrderBook_<DEPTH> book;
     const std::array<uint64_t, 1> bid_p = {100};
     const std::array<uint64_t, 1> bid_q = {1};
     const std::array<uint64_t, 1> ask_p = {200};
@@ -273,7 +300,7 @@ TEST(OrderBook, UpdateBid_UpdateAsk) {
 }
 
 TEST(OrderBook, UpdateBid_InsertsNewPriceLevel) {
-    OrderBook<DEPTH> book;
+    OrderBook_<DEPTH> book;
     const std::array<uint64_t, 1> bid_p = {100};
     const std::array<uint64_t, 1> bid_q = {1};
     const std::array<uint64_t, 0> empty{};

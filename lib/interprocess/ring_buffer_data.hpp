@@ -60,6 +60,18 @@ struct alignas(Alignment) Trade_ {
     bool is_buyer_maker = false;
 };
 
+template <uint32_t Alignment>
+struct alignas(Alignment) Order_ {
+    enum class Type : uint8_t {
+        BUY,
+        SELL,
+    };
+
+    uint64_t price = 0;
+    uint64_t quantity = 0;
+    Type type = Type::BUY;
+};
+
 template <uint32_t Alignment, uint32_t DataSize>
 struct alignas(Alignment) ObserverData_ {
     constexpr static uint32_t message_size = DataSize - sizeof(uint64_t) - sizeof(LogLevel);

@@ -4,6 +4,7 @@
 #include <lib/interprocess/spmc_ring_buffer.hpp>
 #include <lib/interprocess/spsc_ring_buffer.hpp>
 #include <lib/interprocess/shared_memory.hpp>
+#include <lib/local_order_book.hpp>
 
 #include <cstdint>
 
@@ -11,8 +12,10 @@ namespace hft {
 
 constexpr uint32_t CACHE_LINE_SIZE = 64;
 constexpr uint32_t ORDER_BOOK_DEPTH = 100;
+constexpr uint32_t PRICE_SHIFT = 8;
+constexpr uint32_t QUANTITY_SHIFT = 8;
 
-// * * * Feeder -> Trader(s) * * *
+// * * * Market Data * * *
 
 const char* const SHM_NAME_MARKET_DATA = "market_data";
 
@@ -41,7 +44,11 @@ using ShmMarketData = SharedMemory<
     TradeRingBuffer
 >;
 
-// * * * Any service -> Observer * * *
+using OrderBook = OrderBook_<ORDER_BOOK_DEPTH>;
+
+using Order = Order_<CACHE_LINE_SIZE>;
+
+// * * * Observer * * *
 
 const char* const SHM_NAME_FEEDER_TO_OBSERVER = "feeder_to_observer";
 const char* const SHM_NAME_TRADER_TO_OBSERVER = "trader_to_observer";

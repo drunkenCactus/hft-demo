@@ -1,9 +1,10 @@
-#include <lib/local_order_book.hpp>
 #include <lib/binance/binance_api_client.hpp>
 #include <lib/binance/parser.hpp>
 #include <lib/interprocess/hot_path_logger.hpp>
 #include <lib/interprocess/interprocess.hpp>
+#include <lib/trade_flow_window.hpp>
 
+#include <span>
 #include <thread>
 
 namespace hft {
@@ -49,6 +50,10 @@ public:
         return true;
     }
 
+    const OrderBook& Book() const noexcept {
+        return order_book_;
+    }
+
 private:
     [[nodiscard]] bool ResetSnapshot() {
         std::string_view response = binance_api_client_.GetOrderBookShapshot();
@@ -77,7 +82,7 @@ private:
 private:
     OrderBookUpdateRingBuffer* buffer_;
     BinanceApiClient binance_api_client_;
-    OrderBook<ORDER_BOOK_DEPTH> order_book_;
+    OrderBook order_book_;
 };
 
 class TradeProcessor {
@@ -90,7 +95,11 @@ public:
         Trade trade;
         ReadResult result = buffer_->Read(trade, CONSUMER_ID);
         if (result == ReadResult::SUCCESS) {
-            // process trade
+            flow_window_.OnTrade(
+                trade.meta.event_timestamp_microseconds,
+                trade.is_buyer_maker,
+                trade.quantity
+            );
         } else if (result == ReadResult::CONSUMER_IS_DISABLED) {
             HOT_ERROR << "Consumer for trades is disabled" << Endl;
             return false;
@@ -98,8 +107,74 @@ public:
         return true;
     }
 
+    const TradeFlowWindow& FlowWindow() const noexcept {
+        return flow_window_;
+    }
+
 private:
     TradeRingBuffer* buffer_;
+    TradeFlowWindow flow_window_;
+};
+
+class OrderProcessor {
+public:
+    OrderProcessor(const OrderBook& book, const TradeFlowWindow& flow)
+        : book_(book)
+        , flow_(flow)
+    {}
+
+    [[nodiscard]] bool CreateOrder(Order& order) noexcept {
+        const auto& best_bid = book_.GetBestBid();
+        const auto& best_ask = book_.GetBestAsk();
+        if (best_bid.price == 0 || best_ask.price == 0 || best_bid.price >= best_ask.price) {
+            return false;
+        }
+
+        const uint64_t bid_sum = SumQuantities(book_.GetTopBids(kDepthLevels));
+        const uint64_t ask_sum = SumQuantities(book_.GetTopAsks(kDepthLevels));
+
+        // 9*bid > 11*ask ~ >55% bid share
+        const bool bid_heavy = (ask_sum == 0 && bid_sum > 0) || (9ULL * bid_sum > 11ULL * ask_sum);
+        const bool ask_heavy = (bid_sum == 0 && ask_sum > 0) || (9ULL * ask_sum > 11ULL * bid_sum);
+
+        const bool buy_heavy = flow_.AggressiveBuyVolume() > flow_.AggressiveSellVolume();
+        const bool sell_heavy = flow_.AggressiveSellVolume() > flow_.AggressiveBuyVolume();
+
+        if (bid_heavy && buy_heavy) {
+            order.type = Order::Type::BUY;
+            order.price = best_ask.price;
+            order.quantity = kOrderQty;
+        } else if (ask_heavy && sell_heavy) {
+            order.type = Order::Type::SELL;
+            order.price = best_bid.price;
+            order.quantity = kOrderQty;
+        } else {
+            return false;
+        }
+
+        if (last_order_.type == order.type && last_order_.price == order.price) {
+            return false;
+        }
+        last_order_ = order;
+        return true;
+    }    
+
+private:
+    static uint64_t SumQuantities(std::span<const OrderBookRow> levels) noexcept {
+        uint64_t sum = 0;
+        for (const OrderBookRow& row : levels) {
+            sum += row.quantity;
+        }
+        return sum;
+    }
+
+private:
+    const OrderBook& book_;
+    const TradeFlowWindow& flow_;
+    static constexpr uint32_t kDepthLevels = 5;
+    static constexpr uint64_t kOrderQty = 10;
+
+    Order last_order_;
 };
 
 }  // namespace
@@ -118,8 +193,6 @@ int RunTrader() {
     HotPathLogger::Init(ring_buffer_log);
     HOT_INFO << "Trader started!" << Endl;
 
-    BinanceApiClient binance_api_client("BTCUSDT", ORDER_BOOK_DEPTH);
-
     std::unique_ptr<ShmMarketData> shm_market_data = nullptr;
     while (shm_market_data == nullptr) {
         try {
@@ -137,10 +210,12 @@ int RunTrader() {
     auto [rb_order_book_updates, rb_trades] = shm_market_data->GetObjects();
     OrderBookProcessor order_book_processor(rb_order_book_updates);
     TradeProcessor trade_processor(rb_trades);
+    OrderProcessor order_processor(order_book_processor.Book(), trade_processor.FlowWindow());
 
     rb_order_book_updates->ResetConsumer(CONSUMER_ID);
     rb_trades->ResetConsumer(CONSUMER_ID);
 
+    Order order;
     while (true) {
         if (!shm_market_data->IsProducerAlive(LIVENESS_TRESHOLD_SECONDS)) {
             HOT_ERROR << "Producer is dead" << Endl;
@@ -152,6 +227,10 @@ int RunTrader() {
         }
         if (!trade_processor.ProcessTrade()) {
             return 1;
+        }
+        if (order_processor.CreateOrder(order)) {
+            HOT_INFO << "Created order: " << (order.type == Order::Type::BUY ? "BUY" : "SELL")
+                     << " price=" << order.price << " qty=" << order.quantity << Endl;
         }
     }
 
