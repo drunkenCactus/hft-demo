@@ -66,9 +66,10 @@ public:
         InsertAt(pos, price, quantity);
     }
 
-    OrderBookRow GetBest() const noexcept {
+    const OrderBookRow& GetBest() const noexcept {
+        constexpr static OrderBookRow empty;
         if (count_ == 0) {
-            return OrderBookRow{};
+            return empty;
         }
         return rows_[0];
     }
@@ -119,7 +120,7 @@ private:
 };
 
 template <uint32_t Depth>
-class OrderBook {
+class OrderBook_ {
 public:
     void Init(
         uint64_t last_update_id,
@@ -149,11 +150,11 @@ public:
         return last_update_id_;
     }
 
-    OrderBookRow GetBestBid() const noexcept {
+    const OrderBookRow& GetBestBid() const noexcept {
         return bids_.GetBest();
     }
 
-    OrderBookRow GetBestAsk() const noexcept {
+    const OrderBookRow& GetBestAsk() const noexcept {
         return asks_.GetBest();
     }
 
@@ -163,6 +164,24 @@ public:
 
     std::span<const OrderBookRow> GetAsks() const noexcept {
         return asks_.Get();
+    }
+
+    std::span<const OrderBookRow> GetTopBids(uint32_t n) const noexcept {
+        const std::span<const OrderBookRow> all = bids_.Get();
+        if (n == 0 || all.empty()) {
+            return {};
+        }
+        const size_t len = std::min(static_cast<size_t>(n), all.size());
+        return all.subspan(0, len);
+    }
+
+    std::span<const OrderBookRow> GetTopAsks(uint32_t n) const noexcept {
+        const std::span<const OrderBookRow> all = asks_.Get();
+        if (n == 0 || all.empty()) {
+            return {};
+        }
+        const size_t len = std::min(static_cast<size_t>(n), all.size());
+        return all.subspan(0, len);
     }
 
 private:
