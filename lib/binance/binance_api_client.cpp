@@ -16,7 +16,7 @@ BinanceApiClient::BinanceApiClient(std::string_view symbol, uint32_t limit)
     : target_(std::format("/api/v3/depth?symbol={}&limit={}", symbol, limit))
 {}
 
-std::string_view BinanceApiClient::GetOrderBookShapshot() {
+std::string_view BinanceApiClient::GetOrderBookSnapshot() {
     boost::asio::io_context ioc;
     boost::asio::ssl::context ctx(boost::asio::ssl::context::tlsv12_client);
     ctx.set_verify_mode(boost::asio::ssl::verify_none);

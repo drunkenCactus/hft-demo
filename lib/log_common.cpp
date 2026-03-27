@@ -4,13 +4,13 @@ namespace hft {
 
 std::ostream& operator<<(std::ostream& s, LogLevel level) {
     switch (level) {
-        case LogLevel::INFO:
+        case LogLevel::kInfo:
             s << "[INFO]";
             break;
-        case LogLevel::WARNING:
+        case LogLevel::kWarning:
             s << "[WARNING]";
             break;
-        case LogLevel::ERROR:
+        case LogLevel::kError:
             s << "[ERROR]";
             break;
     }

@@ -10,59 +10,59 @@
 
 namespace hft {
 
-constexpr uint32_t CACHE_LINE_SIZE = 64;
-constexpr uint32_t ORDER_BOOK_DEPTH = 100;
-constexpr uint32_t PRICE_SHIFT = 8;
-constexpr uint32_t QUANTITY_SHIFT = 8;
+constexpr uint32_t kCacheLineSize = 64;
+constexpr uint32_t kOrderBookDepth = 100;
+constexpr uint32_t kPriceShift = 8;
+constexpr uint32_t kQuantityShift = 8;
 
 // * * * Market Data * * *
 
-const char* const SHM_NAME_MARKET_DATA = "market_data";
+const char* const kShmNameMarketData = "market_data";
 
-using OrderBookUpdate = OrderBookUpdate_<CACHE_LINE_SIZE>;
-using Trade = Trade_<CACHE_LINE_SIZE>;
+using OrderBookUpdate = OrderBookUpdate_<kCacheLineSize>;
+using Trade = Trade_<kCacheLineSize>;
 
 using OrderBookUpdateRingBuffer = SpmcRingBuffer<
     OrderBookUpdate,
-    CACHE_LINE_SIZE,
+    kCacheLineSize,
     4096 /*BufferLength*/,
     1 /*ConsumersCount*/
 >;
 
 using TradeRingBuffer = SpmcRingBuffer<
     Trade,
-    CACHE_LINE_SIZE,
+    kCacheLineSize,
     4096 /*BufferLength*/,
     1 /*ConsumersCount*/
 >;
 
-using OrderBookSnapshot = OrderBookSnapshot_<CACHE_LINE_SIZE, ORDER_BOOK_DEPTH>;
+using OrderBookSnapshot = OrderBookSnapshot_<kCacheLineSize, kOrderBookDepth>;
 
 using ShmMarketData = SharedMemory<
-    CACHE_LINE_SIZE,
+    kCacheLineSize,
     OrderBookUpdateRingBuffer,
     TradeRingBuffer
 >;
 
-using OrderBook = OrderBook_<ORDER_BOOK_DEPTH>;
+using OrderBook = OrderBook_<kOrderBookDepth>;
 
-using Order = Order_<CACHE_LINE_SIZE>;
+using Order = Order_<kCacheLineSize>;
 
 // * * * Observer * * *
 
-const char* const SHM_NAME_FEEDER_TO_OBSERVER = "feeder_to_observer";
-const char* const SHM_NAME_TRADER_TO_OBSERVER = "trader_to_observer";
+const char* const kShmNameFeederToObserver = "feeder_to_observer";
+const char* const kShmNameTraderToObserver = "trader_to_observer";
 
-using ObserverData = ObserverData_<CACHE_LINE_SIZE, 2 * CACHE_LINE_SIZE>;
+using ObserverData = ObserverData_<kCacheLineSize, 2 * kCacheLineSize>;
 
 using ObserverRingBuffer = SpscRingBuffer<
     ObserverData,
-    CACHE_LINE_SIZE,
+    kCacheLineSize,
     1024 /*BufferLength*/
 >;
 
 using ShmToObserver = SharedMemory<
-    CACHE_LINE_SIZE,
+    kCacheLineSize,
     ObserverRingBuffer
 >;
 

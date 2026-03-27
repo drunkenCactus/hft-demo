@@ -6,9 +6,9 @@
 namespace hft {
 
 enum class ReadResult : uint8_t {
-    SUCCESS,
-    BUFFER_IS_EMPTY,
-    CONSUMER_IS_DISABLED
+    kSuccess,
+    kBufferIsEmpty,
+    kConsumerIsDisabled,
 };
 
 template <uint32_t Alignment, typename T>

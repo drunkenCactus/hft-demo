@@ -11,21 +11,21 @@ namespace hft {
 
 namespace {
 
-constexpr uint32_t CONSUMER_ID = 0;
-constexpr uint32_t RECONNECT_TIMEOUT_MS = 100;
-constexpr uint32_t LIVENESS_TRESHOLD_SECONDS = 5;
+constexpr uint32_t kConsumerId = 0;
+constexpr uint32_t kReconnectTimeoutMs = 100;
+constexpr uint32_t kLivenessThresholdSeconds = 5;
 
 class OrderBookProcessor {
 public:
     OrderBookProcessor(OrderBookUpdateRingBuffer* buffer)
         : buffer_(buffer)
-        , binance_api_client_("BTCUSDT", ORDER_BOOK_DEPTH)
+        , binance_api_client_("BTCUSDT", kOrderBookDepth)
     {}
 
     [[nodiscard]] bool ProcessUpdate() {
         OrderBookUpdate update;
-        ReadResult result = buffer_->Read(update, CONSUMER_ID);
-        if (result == ReadResult::SUCCESS) {
+        ReadResult result = buffer_->Read(update, kConsumerId);
+        if (result == ReadResult::kSuccess) {
             if (update.first_update_id > order_book_.LastUpdateId() + 1) {
                 // order_book is corrupted
                 HOT_WARNING << "Order book snapshot is corrupted" << Endl;
@@ -37,13 +37,13 @@ public:
                 HOT_WARNING << "Order book update is too old. Skip it" << Endl;
             } else {
                 // update local order book
-                if (update.type == OrderBookUpdate::Type::BID) {
+                if (update.type == OrderBookUpdate::Type::kBid) {
                     order_book_.UpdateBid(update.last_update_id, update.price, update.quantity);
                 } else {
                     order_book_.UpdateAsk(update.last_update_id, update.price, update.quantity);
                 }
             }
-        } else if (result == ReadResult::CONSUMER_IS_DISABLED) {
+        } else if (result == ReadResult::kConsumerIsDisabled) {
             HOT_ERROR << "Consumer for order book updates is disabled" << Endl;
             return false;
         }
@@ -56,7 +56,7 @@ public:
 
 private:
     [[nodiscard]] bool ResetSnapshot() {
-        std::string_view response = binance_api_client_.GetOrderBookShapshot();
+        std::string_view response = binance_api_client_.GetOrderBookSnapshot();
         if (!ParseOrderBookSnapshot(
             response,
             [this](const OrderBookSnapshot& snapshot) {
@@ -74,7 +74,7 @@ private:
             HOT_ERROR << "Order book snapshot parsing error" << Endl;
             return false;
         } else {
-            HOT_INFO << "Order book snapshot resetted successfully" << Endl;
+            HOT_INFO << "Order book snapshot was reset successfully" << Endl;
             return true;
         }
     }
@@ -93,14 +93,14 @@ public:
 
     [[nodiscard]] bool ProcessTrade() {
         Trade trade;
-        ReadResult result = buffer_->Read(trade, CONSUMER_ID);
-        if (result == ReadResult::SUCCESS) {
+        ReadResult result = buffer_->Read(trade, kConsumerId);
+        if (result == ReadResult::kSuccess) {
             flow_window_.OnTrade(
                 trade.meta.event_timestamp_microseconds,
                 trade.is_buyer_maker,
                 trade.quantity
             );
-        } else if (result == ReadResult::CONSUMER_IS_DISABLED) {
+        } else if (result == ReadResult::kConsumerIsDisabled) {
             HOT_ERROR << "Consumer for trades is disabled" << Endl;
             return false;
         }
@@ -141,11 +141,11 @@ public:
         const bool sell_heavy = flow_.AggressiveSellVolume() > flow_.AggressiveBuyVolume();
 
         if (bid_heavy && buy_heavy) {
-            order.type = Order::Type::BUY;
+            order.type = Order::Type::kBuy;
             order.price = best_ask.price;
             order.quantity = kOrderQty;
         } else if (ask_heavy && sell_heavy) {
-            order.type = Order::Type::SELL;
+            order.type = Order::Type::kSell;
             order.price = best_bid.price;
             order.quantity = kOrderQty;
         } else {
@@ -157,7 +157,7 @@ public:
         }
         last_order_ = order;
         return true;
-    }    
+    }
 
 private:
     static uint64_t SumQuantities(std::span<const OrderBookRow> levels) noexcept {
@@ -182,8 +182,8 @@ private:
 int RunTrader() {
     std::unique_ptr<ShmToObserver> shm_log = nullptr;
     try {
-        RemoveSharedMemory(SHM_NAME_TRADER_TO_OBSERVER);
-        shm_log = std::make_unique<ShmToObserver>(SHM_NAME_TRADER_TO_OBSERVER, MemoryRole::CREATE_ONLY);
+        RemoveSharedMemory(kShmNameTraderToObserver);
+        shm_log = std::make_unique<ShmToObserver>(kShmNameTraderToObserver, MemoryRole::kCreateOnly);
         shm_log->UpdateHeartbeat();
     } catch (const std::exception& e) {
         return 1;
@@ -196,13 +196,13 @@ int RunTrader() {
     std::unique_ptr<ShmMarketData> shm_market_data = nullptr;
     while (shm_market_data == nullptr) {
         try {
-            shm_market_data = std::make_unique<ShmMarketData>(SHM_NAME_MARKET_DATA, MemoryRole::OPEN_ONLY);
+            shm_market_data = std::make_unique<ShmMarketData>(kShmNameMarketData, MemoryRole::kOpenOnly);
         } catch (const ShmVersionConflict& e) {
             HOT_ERROR << e.what() << Endl;
             return 1;
         } catch (const std::exception& e) {
             HOT_WARNING << "Failed to open Market Data shared memory: " << e.what() << Endl;
-            std::this_thread::sleep_for(std::chrono::milliseconds(RECONNECT_TIMEOUT_MS));
+            std::this_thread::sleep_for(std::chrono::milliseconds(kReconnectTimeoutMs));
         }
     }
     HOT_INFO << "Market Data shared memory opened" << Endl;
@@ -212,12 +212,12 @@ int RunTrader() {
     TradeProcessor trade_processor(rb_trades);
     OrderProcessor order_processor(order_book_processor.Book(), trade_processor.FlowWindow());
 
-    rb_order_book_updates->ResetConsumer(CONSUMER_ID);
-    rb_trades->ResetConsumer(CONSUMER_ID);
+    rb_order_book_updates->ResetConsumer(kConsumerId);
+    rb_trades->ResetConsumer(kConsumerId);
 
     Order order;
     while (true) {
-        if (!shm_market_data->IsProducerAlive(LIVENESS_TRESHOLD_SECONDS)) {
+        if (!shm_market_data->IsProducerAlive(kLivenessThresholdSeconds)) {
             HOT_ERROR << "Producer is dead" << Endl;
             return 1;
         }
@@ -229,7 +229,7 @@ int RunTrader() {
             return 1;
         }
         if (order_processor.CreateOrder(order)) {
-            HOT_INFO << "Created order: " << (order.type == Order::Type::BUY ? "BUY" : "SELL")
+            HOT_INFO << "Created order: " << (order.type == Order::Type::kBuy ? "BUY" : "SELL")
                      << " price=" << order.price << " qty=" << order.quantity << Endl;
         }
     }
