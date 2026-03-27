@@ -11,7 +11,7 @@
 namespace hft {
 
 // max WebSocket message size
-constexpr std::size_t BINANCE_WS_READ_BUFFER_SIZE = 512 * 1024;
+constexpr std::size_t kBinanceWsReadBufferSize = 512 * 1024;
 
 class BinanceWsClient {
 public:
@@ -36,7 +36,7 @@ private:
 
 private:
     boost::beast::websocket::stream<SslStream> websocket_;
-    boost::beast::flat_static_buffer<BINANCE_WS_READ_BUFFER_SIZE> read_buffer_;
+    boost::beast::flat_static_buffer<kBinanceWsReadBufferSize> read_buffer_;
 };
 
 }  // namespace hft

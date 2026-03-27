@@ -8,17 +8,17 @@ using namespace hft;
 
 namespace {
 
-constexpr uint32_t DEPTH = 16;
+constexpr uint32_t kDepth = 16;
 
 }  // namespace
 
 TEST(OrderBookSide, Ascending_GetBest) {
-    OrderBookSide<DEPTH, OrderBookSideOrder::PRICE_ASCENDING> empty;
+    OrderBookSide<kDepth, OrderBookSideOrder::kPriceAscending> empty;
     EXPECT_TRUE(empty.Get().empty());
     EXPECT_EQ(empty.GetBest().price, 0U);
     EXPECT_EQ(empty.GetBest().quantity, 0U);
 
-    OrderBookSide<DEPTH, OrderBookSideOrder::PRICE_ASCENDING> side;
+    OrderBookSide<kDepth, OrderBookSideOrder::kPriceAscending> side;
     const std::array<uint64_t, 2> prices = {100, 110};
     const std::array<uint64_t, 2> qty = {1, 2};
     side.Init(prices.data(), qty.data(), 2);
@@ -29,7 +29,7 @@ TEST(OrderBookSide, Ascending_GetBest) {
 }
 
 TEST(OrderBookSide, Ascending_Init_TruncatesToDepth) {
-    OrderBookSide<3, OrderBookSideOrder::PRICE_ASCENDING> side;
+    OrderBookSide<3, OrderBookSideOrder::kPriceAscending> side;
     const std::array<uint64_t, 5> prices = {10, 20, 30, 40, 50};
     const std::array<uint64_t, 5> qty = {1, 2, 3, 4, 5};
     side.Init(prices.data(), qty.data(), 5);
@@ -45,7 +45,7 @@ TEST(OrderBookSide, Ascending_Init_TruncatesToDepth) {
 }
 
 TEST(OrderBookSide, Ascending_UpdateExistingQuantity) {
-    OrderBookSide<DEPTH, OrderBookSideOrder::PRICE_ASCENDING> side;
+    OrderBookSide<kDepth, OrderBookSideOrder::kPriceAscending> side;
     const std::array<uint64_t, 2> prices = {100, 200};
     const std::array<uint64_t, 2> qty = {1, 2};
     side.Init(prices.data(), qty.data(), 2);
@@ -71,7 +71,7 @@ TEST(OrderBookSide, Ascending_UpdateExistingQuantity) {
 }
 
 TEST(OrderBookSide, Ascending_RemoveLevel) {
-    OrderBookSide<DEPTH, OrderBookSideOrder::PRICE_ASCENDING> side;
+    OrderBookSide<kDepth, OrderBookSideOrder::kPriceAscending> side;
     const std::array<uint64_t, 3> prices = {100, 110, 120};
     const std::array<uint64_t, 3> qty = {1, 2, 3};
     side.Init(prices.data(), qty.data(), 3);
@@ -103,7 +103,7 @@ TEST(OrderBookSide, Ascending_RemoveLevel) {
 }
 
 TEST(OrderBookSide, Ascending_InsertNewLevel) {
-    OrderBookSide<DEPTH, OrderBookSideOrder::PRICE_ASCENDING> side;
+    OrderBookSide<kDepth, OrderBookSideOrder::kPriceAscending> side;
 
     side.Update(100, 1);
     {
@@ -132,7 +132,7 @@ TEST(OrderBookSide, Ascending_InsertNewLevel) {
 }
 
 TEST(OrderBookSide, Descending_UpdateExistingQuantity) {
-    OrderBookSide<DEPTH, OrderBookSideOrder::PRICE_DESCENDING> side;
+    OrderBookSide<kDepth, OrderBookSideOrder::kPriceDescending> side;
     const std::array<uint64_t, 2> prices = {200, 100};
     const std::array<uint64_t, 2> qty = {2, 1};
     side.Init(prices.data(), qty.data(), 2);
@@ -155,7 +155,7 @@ TEST(OrderBookSide, Descending_UpdateExistingQuantity) {
 }
 
 TEST(OrderBookSide, Descending_RemoveLevel) {
-    OrderBookSide<DEPTH, OrderBookSideOrder::PRICE_DESCENDING> side;
+    OrderBookSide<kDepth, OrderBookSideOrder::kPriceDescending> side;
     const std::array<uint64_t, 3> prices = {300, 200, 100};
     const std::array<uint64_t, 3> qty = {3, 2, 1};
     side.Init(prices.data(), qty.data(), 3);
@@ -187,7 +187,7 @@ TEST(OrderBookSide, Descending_RemoveLevel) {
 }
 
 TEST(OrderBookSide, Descending_InsertNewLevel) {
-    OrderBookSide<DEPTH, OrderBookSideOrder::PRICE_DESCENDING> side;
+    OrderBookSide<kDepth, OrderBookSideOrder::kPriceDescending> side;
 
     side.Update(200, 2);
     {
@@ -216,7 +216,7 @@ TEST(OrderBookSide, Descending_InsertNewLevel) {
 }
 
 TEST(OrderBook, LastUpdateId) {
-    OrderBook_<DEPTH> book;
+    OrderBook_<kDepth> book;
     EXPECT_EQ(book.LastUpdateId(), 0U);
 
     const std::array<uint64_t, 0> empty{};
@@ -231,7 +231,7 @@ TEST(OrderBook, LastUpdateId) {
 }
 
 TEST(OrderBook, Init_GetBestBid_GetBestAsk) {
-    OrderBook_<DEPTH> book;
+    OrderBook_<kDepth> book;
     const std::array<uint64_t, 2> bid_prices = {105, 100};
     const std::array<uint64_t, 2> bid_qty = {1, 2};
     const std::array<uint64_t, 2> ask_prices = {110, 115};
@@ -281,7 +281,7 @@ TEST(OrderBook, Init_GetBestBid_GetBestAsk) {
 }
 
 TEST(OrderBook, UpdateBid_UpdateAsk) {
-    OrderBook_<DEPTH> book;
+    OrderBook_<kDepth> book;
     const std::array<uint64_t, 1> bid_p = {100};
     const std::array<uint64_t, 1> bid_q = {1};
     const std::array<uint64_t, 1> ask_p = {200};
@@ -300,7 +300,7 @@ TEST(OrderBook, UpdateBid_UpdateAsk) {
 }
 
 TEST(OrderBook, UpdateBid_InsertsNewPriceLevel) {
-    OrderBook_<DEPTH> book;
+    OrderBook_<kDepth> book;
     const std::array<uint64_t, 1> bid_p = {100};
     const std::array<uint64_t, 1> bid_q = {1};
     const std::array<uint64_t, 0> empty{};

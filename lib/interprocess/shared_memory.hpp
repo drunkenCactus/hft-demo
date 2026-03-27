@@ -51,16 +51,16 @@ public:
 };
 
 enum class MemoryRole {
-    CREATE_ONLY,
-    OPEN_ONLY
+    kCreateOnly,
+    kOpenOnly,
 };
 
 template <uint32_t Alignment, typename... Objects>
 class SharedMemory {
 private:
     struct alignas(Alignment) Meta {
-        const uint32_t magic = IPC_MAGIC;
-        const uint32_t version = IPC_VERSION;
+        const uint32_t magic = kIpcMagic;
+        const uint32_t version = kIpcVersion;
         std::atomic<uint32_t> heartbeat_seconds{0};
         static_assert(std::atomic<uint32_t>::is_always_lock_free);
     };
@@ -69,7 +69,7 @@ public:
     SharedMemory(const char* const name, const MemoryRole role)
         : role_(role)
     {
-        if (role_ == MemoryRole::CREATE_ONLY) {
+        if (role_ == MemoryRole::kCreateOnly) {
             memory_ = bip::shared_memory_object(bip::create_only, name, bip::read_write);
             memory_.truncate(GetObjectsSize<Alignment, Meta, Objects...>());
         } else {
@@ -103,7 +103,7 @@ public:
             throw std::runtime_error("mlock failed: " + reason);
         }
 
-        auto buffer_data = role_ == MemoryRole::CREATE_ONLY
+        auto buffer_data = role_ == MemoryRole::kCreateOnly
             ? CreateObjectsInBuffer<Alignment, Meta, Objects...>(region_.get_address())
             : FetchObjectsFromBuffer<Alignment, Meta, Objects...>(region_.get_address());
         std::apply(
@@ -114,11 +114,11 @@ public:
             std::move(buffer_data)
         );
 
-        if (role_ == MemoryRole::OPEN_ONLY) {
-            if (meta_->magic != IPC_MAGIC) {
+        if (role_ == MemoryRole::kOpenOnly) {
+            if (meta_->magic != kIpcMagic) {
                 throw std::runtime_error("shared memory magic is missed");
             }
-            if (meta_->version != IPC_VERSION) {
+            if (meta_->version != kIpcVersion) {
                 throw ShmVersionConflict();
             }
         }
@@ -134,8 +134,8 @@ public:
         return objects_;
     }
 
-    bool IsProducerAlive(const uint32_t treshold_seconds) const noexcept {
-        return meta_->heartbeat_seconds.load(std::memory_order_acquire) + treshold_seconds > NowSeconds();
+    bool IsProducerAlive(const uint32_t threshold_seconds) const noexcept {
+        return meta_->heartbeat_seconds.load(std::memory_order_acquire) + threshold_seconds > NowSeconds();
     }
 
     void UpdateHeartbeat() noexcept {

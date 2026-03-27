@@ -7,9 +7,9 @@
 namespace hft {
 
 enum class Symbol : uint8_t {
-    UNKNOWN,
-    BTCUSDT,
-    ETHUSDT,
+    kUnknown,
+    kBtcUsdt,
+    kEthUsdt,
 };
 
 struct MessageMeta {
@@ -27,7 +27,7 @@ struct alignas(Alignment) OrderBookSnapshot_ {
     uint64_t asks_quantities[Depth]{};
     uint32_t bids_depth = 0;
     uint32_t asks_depth = 0;
-    Symbol symbol = Symbol::UNKNOWN;
+    Symbol symbol = Symbol::kUnknown;
 
     static_assert(
         Depth > 0,
@@ -38,8 +38,8 @@ struct alignas(Alignment) OrderBookSnapshot_ {
 template <uint32_t Alignment>
 struct alignas(Alignment) OrderBookUpdate_ {
     enum class Type : uint8_t {
-        BID,
-        ASK,
+        kBid,
+        kAsk,
     };
 
     MessageMeta meta;
@@ -47,8 +47,8 @@ struct alignas(Alignment) OrderBookUpdate_ {
     uint64_t last_update_id = 0;
     uint64_t price = 0;
     uint64_t quantity = 0;
-    Type type = Type::BID;
-    Symbol symbol = Symbol::UNKNOWN;
+    Type type = Type::kBid;
+    Symbol symbol = Symbol::kUnknown;
 };
 
 template <uint32_t Alignment>
@@ -56,20 +56,20 @@ struct alignas(Alignment) Trade_ {
     MessageMeta meta;
     uint64_t price = 0;
     uint64_t quantity = 0;
-    Symbol symbol = Symbol::UNKNOWN;
+    Symbol symbol = Symbol::kUnknown;
     bool is_buyer_maker = false;
 };
 
 template <uint32_t Alignment>
 struct alignas(Alignment) Order_ {
     enum class Type : uint8_t {
-        BUY,
-        SELL,
+        kBuy,
+        kSell,
     };
 
     uint64_t price = 0;
     uint64_t quantity = 0;
-    Type type = Type::BUY;
+    Type type = Type::kBuy;
 };
 
 template <uint32_t Alignment, uint32_t DataSize>
@@ -84,7 +84,7 @@ struct alignas(Alignment) ObserverData_ {
     );
 
     uint64_t timestamp_ns = 0;
-    LogLevel level = LogLevel::INFO;
+    LogLevel level = LogLevel::kInfo;
     char message[message_size];
 };
 

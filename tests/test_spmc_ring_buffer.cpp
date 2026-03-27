@@ -1,4 +1,4 @@
-#include "lib/interprocess/ring_buffer_common.hpp"
+#include <lib/interprocess/ring_buffer_common.hpp>
 #include <gtest/gtest.h>
 #include <tests/utils.hpp>
 
@@ -9,9 +9,9 @@
 
 using namespace hft;
 
-constexpr uint32_t ALIGNMENT = 64;
+constexpr uint32_t kAlignment = 64;
 
-struct alignas(ALIGNMENT) RingBufferData {
+struct alignas(kAlignment) RingBufferData {
     char marker1;
     char padding[64];
     char marker2;
@@ -20,12 +20,12 @@ struct alignas(ALIGNMENT) RingBufferData {
 TEST(SpmcRingBuffer, Size) {
     constexpr uint32_t consumers_count = 2;
     constexpr uint32_t buffer_length = 8;
-    using RingBufferTest = SpmcRingBuffer<RingBufferData, ALIGNMENT, buffer_length, consumers_count>;
+    using RingBufferTest = SpmcRingBuffer<RingBufferData, kAlignment, buffer_length, consumers_count>;
 
     const uint32_t expected_size
-        = 1 * ALIGNMENT                             // head_
-        + consumers_count * ALIGNMENT               // tails_
-        + consumers_count * ALIGNMENT               // active_consumers_
+        = 1 * kAlignment                             // head_
+        + consumers_count * kAlignment               // tails_
+        + consumers_count * kAlignment               // active_consumers_
         + buffer_length * sizeof(RingBufferData);   // data_
     EXPECT_EQ(sizeof(RingBufferTest), expected_size);
 }
@@ -33,7 +33,7 @@ TEST(SpmcRingBuffer, Size) {
 TEST(SpmcRingBuffer, ReadWritten) {
     constexpr uint32_t consumers_count = 2;
     constexpr uint32_t buffer_length = 1024;
-    using RingBufferTest = SpmcRingBuffer<RingBufferData, ALIGNMENT, buffer_length, consumers_count>;
+    using RingBufferTest = SpmcRingBuffer<RingBufferData, kAlignment, buffer_length, consumers_count>;
     RingBufferTest buffer;
 
     const uint32_t data_length = 10000;
@@ -51,7 +51,7 @@ TEST(SpmcRingBuffer, ReadWritten) {
             uint32_t pos = 0;
             while (true) {
                 ReadResult result = buffer.Read(buffer_data, consumer_id);
-                if (result == ReadResult::SUCCESS) {
+                if (result == ReadResult::kSuccess) {
                     if (buffer_data.marker1 != data1[pos] || buffer_data.marker2 != data2[pos]) {
                         corrupted_count.fetch_add(1, std::memory_order_relaxed);
                     }
@@ -90,7 +90,7 @@ TEST(SpmcRingBuffer, ReadWritten) {
 TEST(SpmcRingBuffer, DisableLaggingConsumer) {
     constexpr uint32_t consumers_count = 1;
     constexpr uint32_t buffer_length = 4;
-    using RingBufferTest = SpmcRingBuffer<RingBufferData, ALIGNMENT, buffer_length, consumers_count>;
+    using RingBufferTest = SpmcRingBuffer<RingBufferData, kAlignment, buffer_length, consumers_count>;
     RingBufferTest buffer;
 
     auto write = [&buffer](const std::string& data) {
@@ -104,7 +104,7 @@ TEST(SpmcRingBuffer, DisableLaggingConsumer) {
     auto read = [&buffer]() {
         RingBufferData buffer_data;
         std::string result;
-        while (buffer.Read(buffer_data, 0) == ReadResult::SUCCESS) {
+        while (buffer.Read(buffer_data, 0) == ReadResult::kSuccess) {
             result.push_back(buffer_data.marker1);
         }
         return result;

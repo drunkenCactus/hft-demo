@@ -9,28 +9,28 @@ namespace hft {
 
 namespace {
 
-const std::string LOGFILES_DIR = "/var/log/hft/";
-const std::string OBSERVER_LOGFILE_PATH = LOGFILES_DIR + "observer.log";
+const std::string kLogfilesDir = "/var/log/hft/";
+const std::string kObserverLogfilePath = kLogfilesDir + "observer.log";
 
-const std::vector<std::pair<const char* const, std::string>> SHM_NAME_TO_LOGFILE_PATH = {
-    {SHM_NAME_FEEDER_TO_OBSERVER, LOGFILES_DIR + "feeder.log"},
-    {SHM_NAME_TRADER_TO_OBSERVER, LOGFILES_DIR + "trader.log"},
+const std::vector<std::pair<const char* const, std::string>> kShmNameToLogfilePath = {
+    {kShmNameFeederToObserver, kLogfilesDir + "feeder.log"},
+    {kShmNameTraderToObserver, kLogfilesDir + "trader.log"},
 };
 
-constexpr uint32_t RECONNECT_TIMEOUT_SECONDS = 1;
-constexpr uint32_t LIVENESS_TRESHOLD_SECONDS = 5;
+constexpr uint32_t kReconnectTimeoutSeconds = 1;
+constexpr uint32_t kLivenessThresholdSeconds = 5;
 
 int ProcessLogAttempt(const char* const shm_name, std::ofstream& logfile) {
     std::unique_ptr<ShmToObserver> shm = nullptr;
     while (shm == nullptr) {
         try {
-            shm = std::make_unique<ShmToObserver>(shm_name, MemoryRole::OPEN_ONLY);
+            shm = std::make_unique<ShmToObserver>(shm_name, MemoryRole::kOpenOnly);
         } catch (const ShmVersionConflict& e) {
             LOG_ERROR << e.what() << Endl;
             return 1;
         } catch (const std::exception& e) {
             LOG_WARNING << "Failed to open {" << shm_name << "}: " << e.what() << Endl;
-            std::this_thread::sleep_for(std::chrono::seconds(RECONNECT_TIMEOUT_SECONDS));
+            std::this_thread::sleep_for(std::chrono::seconds(kReconnectTimeoutSeconds));
         }
     }
     auto [ring_buffer] = shm->GetObjects();
@@ -39,17 +39,17 @@ int ProcessLogAttempt(const char* const shm_name, std::ofstream& logfile) {
     ObserverData data;
     while (true) {
         ReadResult result = ring_buffer->Read(data);
-        if (result == ReadResult::SUCCESS) {
+        if (result == ReadResult::kSuccess) {
             const auto time = std::chrono::system_clock::time_point(
                 std::chrono::duration_cast<std::chrono::system_clock::duration>(
                     std::chrono::nanoseconds(data.timestamp_ns)
                 )
             );
             WriteLog(logfile, time, data.level, data.message);
-        } else if (result == ReadResult::CONSUMER_IS_DISABLED) {
+        } else if (result == ReadResult::kConsumerIsDisabled) {
             LOG_WARNING << "Consumer for {" << shm_name << "} is disabled" << Endl;
             ring_buffer->ResetConsumer();
-        } else if (!shm->IsProducerAlive(LIVENESS_TRESHOLD_SECONDS)) {
+        } else if (!shm->IsProducerAlive(kLivenessThresholdSeconds)) {
             LOG_WARNING << "Producer for {" << shm_name << "} is dead" << Endl;
             return 0;
         }
@@ -70,23 +70,20 @@ void ProcessLog(const char* const shm_name, const std::string& logfile_path) {
             logfile.close();
             std::exit(1);
         }
-        std::this_thread::sleep_for(std::chrono::seconds(RECONNECT_TIMEOUT_SECONDS));
+        std::this_thread::sleep_for(std::chrono::seconds(kReconnectTimeoutSeconds));
         LOG_WARNING << "Restarting logging for {" << shm_name << "}" << Endl;
     }
-
-    LOG_ERROR << "Unexpected event" << Endl;
-    logfile.close();
 }
 
 }  // namespace
 
 void RunObserver() {
-    Logger::Init(OBSERVER_LOGFILE_PATH);
+    Logger::Init(kObserverLogfilePath);
     LOG_INFO << "Observer started!" << Endl;
 
     std::vector<std::thread> threads;
-    threads.reserve(SHM_NAME_TO_LOGFILE_PATH.size());
-    for (const auto& [shm_name, logfile_path] : SHM_NAME_TO_LOGFILE_PATH) {
+    threads.reserve(kShmNameToLogfilePath.size());
+    for (const auto& [shm_name, logfile_path] : kShmNameToLogfilePath) {
         threads.emplace_back(ProcessLog, shm_name, logfile_path);
     }
     for (auto& thread : threads) {

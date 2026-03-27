@@ -4,8 +4,8 @@
 
 namespace hft {
 
-// Update version if any file in /lib/interprocess/... changes
-constexpr uint32_t IPC_VERSION = 10;
-constexpr uint32_t IPC_MAGIC = 547892;
+// Update kIpcVersion if any file in /lib/interprocess/... changes
+constexpr uint32_t kIpcVersion = 11;
+constexpr uint32_t kIpcMagic = 547892;
 
 }  // namespace hft

@@ -9,29 +9,29 @@ namespace hft {
 
 namespace {
 
-constexpr const char* HOST = "stream.binance.com";
-constexpr const char* PORT = "9443";
-constexpr const char* TARGET = "/stream?streams=btcusdt@depth@100ms/btcusdt@trade&timeUnit=microsecond";
+constexpr const char* kHost = "stream.binance.com";
+constexpr const char* kPort = "9443";
+constexpr const char* kTarget = "/stream?streams=btcusdt@depth@100ms/btcusdt@trade&timeUnit=microsecond";
 
 }  // namespace
 
 int RunFeeder() {
     try {
-        RemoveSharedMemory(SHM_NAME_FEEDER_TO_OBSERVER);
-        ShmToObserver shm_log(SHM_NAME_FEEDER_TO_OBSERVER, MemoryRole::CREATE_ONLY);
+        RemoveSharedMemory(kShmNameFeederToObserver);
+        ShmToObserver shm_log(kShmNameFeederToObserver, MemoryRole::kCreateOnly);
         shm_log.UpdateHeartbeat();
         auto [ring_buffer_log] = shm_log.GetObjects();
 
         HotPathLogger::Init(ring_buffer_log);
         HOT_INFO << "Feeder started!" << Endl;
 
-        RemoveSharedMemory(SHM_NAME_MARKET_DATA);
-        ShmMarketData shm_market_data(SHM_NAME_MARKET_DATA, MemoryRole::CREATE_ONLY);
+        RemoveSharedMemory(kShmNameMarketData);
+        ShmMarketData shm_market_data(kShmNameMarketData, MemoryRole::kCreateOnly);
         shm_market_data.UpdateHeartbeat();
         auto [rb_order_book_updates, rb_trades] = shm_market_data.GetObjects();
         HOT_INFO << "Market Data shared memory created" << Endl;
 
-        BinanceWsClient client(HOST, PORT, TARGET);
+        BinanceWsClient client(kHost, kPort, kTarget);
         HOT_INFO << "Binance websocket connected" << Endl;
 
         auto order_book_update_callback = [rb_order_book_updates](const OrderBookUpdate& order_book_update) {

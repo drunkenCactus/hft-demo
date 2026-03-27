@@ -12,8 +12,8 @@ struct OrderBookRow {
 };
 
 enum class OrderBookSideOrder {
-    PRICE_ASCENDING,
-    PRICE_DESCENDING,
+    kPriceAscending,
+    kPriceDescending,
 };
 
 template <uint32_t Depth, OrderBookSideOrder Order>
@@ -33,7 +33,7 @@ public:
     void Update(uint64_t price, uint64_t quantity) noexcept {
         OrderBookRow* const end = rows_ + count_;
         OrderBookRow* it;
-        if constexpr (Order == OrderBookSideOrder::PRICE_ASCENDING) {
+        if constexpr (Order == OrderBookSideOrder::kPriceAscending) {
             it = std::lower_bound(
                 rows_,
                 end,
@@ -185,8 +185,8 @@ public:
     }
 
 private:
-    OrderBookSide<Depth, OrderBookSideOrder::PRICE_DESCENDING> bids_;
-    OrderBookSide<Depth, OrderBookSideOrder::PRICE_ASCENDING> asks_;
+    OrderBookSide<Depth, OrderBookSideOrder::kPriceDescending> bids_;
+    OrderBookSide<Depth, OrderBookSideOrder::kPriceAscending> asks_;
     uint64_t last_update_id_ = 0;
 
     static_assert(Depth > 0, "Depth must be greater than zero");

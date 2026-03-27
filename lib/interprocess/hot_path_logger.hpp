@@ -76,6 +76,6 @@ private:
 
 }  // namespace hft
 
-#define HOT_INFO hft::HotPathLogger::Instance().GetFormatter(hft::LogLevel::INFO)
-#define HOT_WARNING hft::HotPathLogger::Instance().GetFormatter(hft::LogLevel::WARNING)
-#define HOT_ERROR hft::HotPathLogger::Instance().GetFormatter(hft::LogLevel::ERROR)
+#define HOT_INFO hft::HotPathLogger::Instance().GetFormatter(hft::LogLevel::kInfo)
+#define HOT_WARNING hft::HotPathLogger::Instance().GetFormatter(hft::LogLevel::kWarning)
+#define HOT_ERROR hft::HotPathLogger::Instance().GetFormatter(hft::LogLevel::kError)

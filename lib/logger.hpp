@@ -60,6 +60,6 @@ private:
 
 }  // namespace hft
 
-#define LOG_INFO hft::Logger::Instance().GetFormatter(hft::LogLevel::INFO)
-#define LOG_WARNING hft::Logger::Instance().GetFormatter(hft::LogLevel::WARNING)
-#define LOG_ERROR hft::Logger::Instance().GetFormatter(hft::LogLevel::ERROR)
+#define LOG_INFO hft::Logger::Instance().GetFormatter(hft::LogLevel::kInfo)
+#define LOG_WARNING hft::Logger::Instance().GetFormatter(hft::LogLevel::kWarning)
+#define LOG_ERROR hft::Logger::Instance().GetFormatter(hft::LogLevel::kError)

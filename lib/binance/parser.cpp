@@ -11,15 +11,15 @@ namespace {
 
 Symbol SymbolFromString(const char* s, std::size_t len) noexcept {
     if (!s) {
-        return Symbol::UNKNOWN;
+        return Symbol::kUnknown;
     }
     if (len == 7 && std::strncmp(s, "BTCUSDT", 7) == 0) {
-        return Symbol::BTCUSDT;
+        return Symbol::kBtcUsdt;
     }
     if (len == 7 && std::strncmp(s, "ETHUSDT", 7) == 0) {
-        return Symbol::ETHUSDT;
+        return Symbol::kEthUsdt;
     }
-    return Symbol::UNKNOWN;
+    return Symbol::kUnknown;
 }
 
 uint64_t GetUint64(const rapidjson::Value& v) noexcept {
@@ -32,14 +32,14 @@ uint64_t GetUint64(const rapidjson::Value& v) noexcept {
     return 0;
 }
 
-constexpr uint64_t EVENT_TIME_MICROSECOND_THRESHOLD = 1'000'000'000'000'000ULL;
+constexpr uint64_t kEventTimeMicrosecondThreshold = 1'000'000'000'000'000ULL;
 
 inline uint64_t EventTimeToMicroseconds(uint64_t raw) noexcept {
-    return (raw >= EVENT_TIME_MICROSECOND_THRESHOLD) ? raw : raw * 1000;
+    return (raw >= kEventTimeMicrosecondThreshold) ? raw : raw * 1000;
 }
 
-// 10^0 .. 10^18 (index k => 10^k); enough for fixed decimal and PRICE_SHIFT/QUANTITY_SHIFT.
-constexpr uint64_t k_pow10_u64[19] = {
+// 10^0 .. 10^18 (index k => 10^k); enough for fixed decimal and kPriceShift/kQuantityShift.
+constexpr uint64_t kPow10U64[19] = {
     1ULL,
     10ULL,
     100ULL,
@@ -61,24 +61,24 @@ constexpr uint64_t k_pow10_u64[19] = {
     1'000'000'000'000'000'000ULL,
 };
 
-static_assert(PRICE_SHIFT <= 18U && QUANTITY_SHIFT <= 18U);
+static_assert(kPriceShift <= 18U && kQuantityShift <= 18U);
 
-constexpr uint64_t k_uint64_max = std::numeric_limits<uint64_t>::max();
+constexpr uint64_t kUint64Max = std::numeric_limits<uint64_t>::max();
 
 // Assembles int_part * 10^dp + frac_part * 10^fp into uint64_t; false if result would exceed UINT64_MAX.
-[[nodiscard]] bool AssembleFixedDecimalToUint64(
+bool AssembleFixedDecimalToUint64(
     uint64_t int_part,
     uint32_t decimal_places,
     uint64_t frac_part,
     uint32_t frac_pad,
     uint64_t& out
 ) noexcept {
-    const uint64_t scale_int = k_pow10_u64[decimal_places];
-    const uint64_t scale_frac = k_pow10_u64[frac_pad];
+    const uint64_t scale_int = kPow10U64[decimal_places];
+    const uint64_t scale_frac = kPow10U64[frac_pad];
 
     uint64_t term1 = 0;
     if (int_part != 0U) {
-        if (int_part > k_uint64_max / scale_int) {
+        if (int_part > kUint64Max / scale_int) {
             return false;
         }
         term1 = int_part * scale_int;
@@ -86,13 +86,13 @@ constexpr uint64_t k_uint64_max = std::numeric_limits<uint64_t>::max();
 
     uint64_t term2 = 0;
     if (frac_part != 0U) {
-        if (frac_part > k_uint64_max / scale_frac) {
+        if (frac_part > kUint64Max / scale_frac) {
             return false;
         }
         term2 = frac_part * scale_frac;
     }
 
-    if (term1 > k_uint64_max - term2) {
+    if (term1 > kUint64Max - term2) {
         return false;
     }
     out = term1 + term2;
@@ -101,7 +101,7 @@ constexpr uint64_t k_uint64_max = std::numeric_limits<uint64_t>::max();
 
 // Parses decimal string as fixed-point uint64_t (scale 10^decimal_places). No floating-point.
 // Allowed characters are digits and at most one '.'; any other character yields false.
-// Single pass over the string; `decimal_places` must be <= 18 (see k_pow10_u64).
+// Single pass over the string; `decimal_places` must be <= 18 (see kPow10U64).
 bool ParseFixedDecimalString(const char* first, const char* last, uint32_t decimal_places, uint64_t& out) noexcept {
     if (first >= last || decimal_places > 18U) {
         return false;
@@ -168,8 +168,8 @@ bool ParsePriceQuantity(const rapidjson::Value& arr, uint64_t& price, uint64_t& 
     const char* price_end = price_start + p.GetStringLength();
     const char* qty_start = q.GetString();
     const char* qty_end = qty_start + q.GetStringLength();
-    if (!ParseFixedDecimalString(price_start, price_end, PRICE_SHIFT, price) ||
-        !ParseFixedDecimalString(qty_start, qty_end, QUANTITY_SHIFT, quantity)) {
+    if (!ParseFixedDecimalString(price_start, price_end, kPriceShift, price) ||
+        !ParseFixedDecimalString(qty_start, qty_end, kQuantityShift, quantity)) {
         return false;
     }
     return true;
@@ -205,7 +205,7 @@ bool ParseDepthEvent(const rapidjson::Value& value, std::function<void(const Ord
     const uint64_t last_id =
         (u != value.MemberEnd() && u->value.IsNumber()) ? GetUint64(u->value) : 0;
 
-    Symbol symbol = Symbol::UNKNOWN;
+    Symbol symbol = Symbol::kUnknown;
     const auto s = value.FindMember("s");
     if (s != value.MemberEnd() && s->value.IsString()) {
         symbol = SymbolFromString(s->value.GetString(), s->value.GetStringLength());
@@ -220,7 +220,7 @@ bool ParseDepthEvent(const rapidjson::Value& value, std::function<void(const Ord
 
     const auto b = value.FindMember("b");
     if (b != value.MemberEnd() && b->value.IsArray()) {
-        out.type = OrderBookUpdate::Type::BID;
+        out.type = OrderBookUpdate::Type::kBid;
         for (rapidjson::SizeType i = 0; i < b->value.Size(); ++i) {
             if (!ParsePriceQuantity(b->value[i], out.price, out.quantity)) {
                 break;
@@ -231,7 +231,7 @@ bool ParseDepthEvent(const rapidjson::Value& value, std::function<void(const Ord
 
     const auto a = value.FindMember("a");
     if (a != value.MemberEnd() && a->value.IsArray()) {
-        out.type = OrderBookUpdate::Type::ASK;
+        out.type = OrderBookUpdate::Type::kAsk;
         for (rapidjson::SizeType i = 0; i < a->value.Size(); ++i) {
             if (!ParsePriceQuantity(a->value[i], out.price, out.quantity)) {
                 break;
@@ -272,7 +272,7 @@ bool ParseTradeEvent(const rapidjson::Value& value, std::function<void(const Tra
     }
     const char* price_start = p->value.GetString();
     const char* price_end = price_start + p->value.GetStringLength();
-    if (!ParseFixedDecimalString(price_start, price_end, PRICE_SHIFT, out.price)) {
+    if (!ParseFixedDecimalString(price_start, price_end, kPriceShift, out.price)) {
         return false;
     }
 
@@ -282,7 +282,7 @@ bool ParseTradeEvent(const rapidjson::Value& value, std::function<void(const Tra
     }
     const char* qty_start = q->value.GetString();
     const char* qty_end = qty_start + q->value.GetStringLength();
-    if (!ParseFixedDecimalString(qty_start, qty_end, QUANTITY_SHIFT, out.quantity)) {
+    if (!ParseFixedDecimalString(qty_start, qty_end, kQuantityShift, out.quantity)) {
         return false;
     }
 
@@ -378,7 +378,7 @@ bool ParseOrderBookSnapshot(std::string_view json, std::function<void(const Orde
     const auto bids = doc.FindMember("bids");
     if (bids != doc.MemberEnd() && bids->value.IsArray()) {
         const auto& arr = bids->value;
-        const auto n = std::min(arr.Size(), static_cast<rapidjson::SizeType>(ORDER_BOOK_DEPTH));
+        const auto n = std::min(arr.Size(), static_cast<rapidjson::SizeType>(kOrderBookDepth));
         uint32_t count = 0;
         for (rapidjson::SizeType i = 0; i < n; ++i) {
             if (!ParsePriceQuantity(arr[i], out.bids_prices[i], out.bids_quantities[i])) {
@@ -392,7 +392,7 @@ bool ParseOrderBookSnapshot(std::string_view json, std::function<void(const Orde
     const auto asks = doc.FindMember("asks");
     if (asks != doc.MemberEnd() && asks->value.IsArray()) {
         const auto& arr = asks->value;
-        const auto n = std::min(arr.Size(), static_cast<rapidjson::SizeType>(ORDER_BOOK_DEPTH));
+        const auto n = std::min(arr.Size(), static_cast<rapidjson::SizeType>(kOrderBookDepth));
         uint32_t count = 0;
         for (rapidjson::SizeType i = 0; i < n; ++i) {
             if (!ParsePriceQuantity(arr[i], out.asks_prices[i], out.asks_quantities[i])) {

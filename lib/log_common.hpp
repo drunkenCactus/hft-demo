@@ -9,9 +9,9 @@ constexpr struct TypeEndl {} Endl;
 namespace hft {
 
 enum class LogLevel : uint8_t {
-    INFO,
-    WARNING,
-    ERROR
+    kInfo,
+    kWarning,
+    kError,
 };
 
 std::ostream& operator<<(std::ostream& s, LogLevel level);

@@ -11,7 +11,8 @@ template <
     uint32_t Alignment,
     uint32_t BufferLength,
     uint32_t ConsumersCount
-> class alignas(Alignment) SpmcRingBuffer {
+>
+class alignas(Alignment) SpmcRingBuffer {
 public:
     SpmcRingBuffer() noexcept {
         for (uint32_t i = 0; i < ConsumersCount; ++i) {
@@ -35,17 +36,17 @@ public:
 
     [[nodiscard]] ReadResult Read(Data& data, const uint32_t consumer) noexcept {
         if (!active_consumers_[consumer].value.load(std::memory_order_acquire)) {
-            return ReadResult::CONSUMER_IS_DISABLED;
+            return ReadResult::kConsumerIsDisabled;
         }
         const uint32_t current_tail = tails_[consumer].value.load(std::memory_order_relaxed);
         const uint32_t head = head_.value.load(std::memory_order_acquire);
         if (current_tail == head) {
-            return ReadResult::BUFFER_IS_EMPTY;
+            return ReadResult::kBufferIsEmpty;
         }
         const uint32_t new_tail = Increment<BufferLength>(current_tail);
         data = data_[new_tail];
         tails_[consumer].value.store(new_tail, std::memory_order_release);
-        return ReadResult::SUCCESS;
+        return ReadResult::kSuccess;
     }
 
     void ResetConsumer(const uint32_t consumer) noexcept {
