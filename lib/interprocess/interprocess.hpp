@@ -15,7 +15,6 @@ constexpr uint32_t kPriceShift = 8;
 constexpr uint32_t kQuantityShift = 8;
 
 // * * * Market Data * * *
-// SHM names: lib/interprocess/ipc_env.hpp (required HFT_IPC_* env vars)
 
 using OrderBookUpdate = OrderBookUpdate_<kCacheLineSize>;
 using Trade = Trade_<kCacheLineSize>;

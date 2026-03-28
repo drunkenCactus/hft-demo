@@ -1,7 +1,9 @@
 #include <lib/interprocess/interprocess.hpp>
-#include <lib/interprocess/ipc_env.hpp>
+#include <lib/interprocess/ipc_params.hpp>
+#include <lib/interprocess/trader_id.hpp>
 #include <lib/logger.hpp>
 
+#include <cstdlib>
 #include <fstream>
 #include <thread>
 #include <vector>
@@ -15,6 +17,16 @@ const std::string kObserverLogfilePath = kLogfilesDir + "observer.log";
 
 constexpr uint32_t kReconnectTimeoutSeconds = 1;
 constexpr uint32_t kLivenessThresholdSeconds = 5;
+
+const char* GetTraderLogfilePath(TraderId id) noexcept {
+    switch (id) {
+        case TraderId::kBtcUsdt:
+            return "trader_btcusdt.log";
+        case TraderId::kEthUsdt:
+            return "trader_ethusdt.log";
+    }
+    std::abort();
+}
 
 int ProcessLogAttempt(const char* const shm_name, std::ofstream& logfile) {
     std::unique_ptr<ShmToObserver> shm = nullptr;
@@ -77,10 +89,13 @@ void RunObserver() {
     Logger::Init(kObserverLogfilePath);
     LOG_INFO << "Observer started!" << Endl;
 
-    const std::vector<std::pair<std::string, std::string>> log_routes = {
-        {IpcFeederToObserverShmName(), kLogfilesDir + "feeder.log"},
-        {IpcTraderToObserverShmName(), kLogfilesDir + "trader.log"},
-    };
+    std::vector<std::pair<std::string, std::string>> log_routes;
+    log_routes.emplace_back(IpcFeederToObserverShmName(), kLogfilesDir + "feeder.log");
+    for (std::size_t i = 0; i < kTraderCount; ++i) {
+        const auto id = static_cast<TraderId>(i);
+        const TraderConfig& cfg = GetTraderConfig(id);
+        log_routes.emplace_back(cfg.trader_observer_shm, kLogfilesDir + GetTraderLogfilePath(id));
+    }
 
     std::vector<std::thread> threads;
     threads.reserve(log_routes.size());

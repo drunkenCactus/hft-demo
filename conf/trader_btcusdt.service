@@ -1,5 +1,5 @@
 [Unit]
-Description=HFT Trading Engine
+Description=HFT Trading Engine (BTCUSDT)
 After=network.target
 
 [Service]
@@ -8,12 +8,12 @@ User=hft-user
 Group=hft-group
 WorkingDirectory=/opt/hft
 EnvironmentFile=/opt/hft/conf/ipc.env
-ExecStart=/opt/hft/bin/trader/trader
+ExecStart=/opt/hft/bin/trader/trader trader_btcusdt
 Restart=always
 RestartSec=60
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=hft-trader
+SyslogIdentifier=hft-trader-btcusdt
 LimitCORE=infinity
 LimitMEMLOCK=infinity
 

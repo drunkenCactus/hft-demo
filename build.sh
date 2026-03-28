@@ -27,8 +27,10 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Application name
+# Binaries under /opt/hft/bin/<name>/<name>
 APP_NAMES=("feeder" "trader" "observer")
+# systemd unit names (without .service)
+SERVICE_NAMES=("feeder" "trader_btcusdt" "trader_ethusdt" "observer")
 APP_USER="hft-user"
 APP_GROUP="hft-group"
 
@@ -43,7 +45,7 @@ TARGET_SYSTEMD_DIR="/etc/systemd/system"
 TARGET_LOGROTATE_DIR="/etc/logrotate.d"
 
 # Configuration files
-SYSTEMD_CONFIGS=("feeder.service" "trader.service" "observer.service")
+SYSTEMD_CONFIGS=("feeder.service" "trader_btcusdt.service" "trader_ethusdt.service" "observer.service")
 LOGROTATE_CONFIG="hft_logrotate"
 
 # ============================================
@@ -185,9 +187,9 @@ deploy() {
     log_info "Deploying applications..."
 
     # 1. Stop services
-    for app_name in "${APP_NAMES[@]}"; do
-        log_info "  → Stopping service $app_name..."
-        systemctl stop "$app_name" 2>/dev/null || true
+    for service_name in "${SERVICE_NAMES[@]}"; do
+        log_info "  → Stopping service $service_name..."
+        systemctl stop "$service_name" 2>/dev/null || true
     done
 
     # 2. Wait 3 seconds for processes to fully terminate
@@ -214,10 +216,10 @@ deploy() {
     # 5. Start services
     systemctl daemon-reload
 
-    for app_name in "${APP_NAMES[@]}"; do
-        log_info "  → Starting service $app_name..."
-        systemctl enable "$app_name"
-        systemctl start "$app_name"
+    for service_name in "${SERVICE_NAMES[@]}"; do
+        log_info "  → Starting service $service_name..."
+        systemctl enable "$service_name"
+        systemctl start "$service_name"
     done
 
     log_success "Deploy completed"
@@ -236,12 +238,12 @@ do_deploy() {
 
     # Verify services
     log_info "Verifying deploy..."
-    for app_name in "${APP_NAMES[@]}"; do
-        if systemctl is-active --quiet "$app_name"; then
-            log_success "Service $app_name is up and running"
+    for service_name in "${SERVICE_NAMES[@]}"; do
+        if systemctl is-active --quiet "$service_name"; then
+            log_success "Service $service_name is up and running"
         else
-            log_error "Service $app_name is not running"
-            systemctl status "$app_name" --no-pager
+            log_error "Service $service_name is not running"
+            systemctl status "$service_name" --no-pager
         fi
     done
 }

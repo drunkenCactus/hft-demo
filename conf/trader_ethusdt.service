@@ -1,0 +1,21 @@
+[Unit]
+Description=HFT Trading Engine (ETHUSDT)
+After=network.target
+
+[Service]
+Type=simple
+User=hft-user
+Group=hft-group
+WorkingDirectory=/opt/hft
+EnvironmentFile=/opt/hft/conf/ipc.env
+ExecStart=/opt/hft/bin/trader/trader trader_ethusdt
+Restart=always
+RestartSec=60
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hft-trader-ethusdt
+LimitCORE=infinity
+LimitMEMLOCK=infinity
+
+[Install]
+WantedBy=multi-user.target

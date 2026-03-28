@@ -7,7 +7,16 @@
     notifempty
 }
 
-/var/log/hft/trader.log {
+/var/log/hft/trader_btcusdt.log {
+    size 100k
+    rotate 3
+    create 644 hft-user hft-group
+    copytruncate
+    nocompress
+    notifempty
+}
+
+/var/log/hft/trader_ethusdt.log {
     size 100k
     rotate 3
     create 644 hft-user hft-group
