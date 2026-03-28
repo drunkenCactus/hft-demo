@@ -37,6 +37,7 @@ SRC_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILD_DIR="$SRC_DIR/.build"
 CONFIG_DIR="$SRC_DIR/conf"
 INSTALL_DIR="/opt/hft/bin"
+INSTALL_CONF_DIR="/opt/hft/conf"
 LOGS_DIR="/var/log/hft"
 TARGET_SYSTEMD_DIR="/etc/systemd/system"
 TARGET_LOGROTATE_DIR="/etc/logrotate.d"
@@ -88,6 +89,7 @@ create_directories() {
         mkdir -p "$INSTALL_DIR/$app_name"
     done
     mkdir -p "$LOGS_DIR"
+    mkdir -p "$INSTALL_CONF_DIR"
 
     for app_name in "${APP_NAMES[@]}"; do
         chown -R "$APP_USER:$APP_GROUP" "$INSTALL_DIR/$app_name"
@@ -95,6 +97,8 @@ create_directories() {
     done
     chown -R "$APP_USER:$APP_GROUP" "$LOGS_DIR"
     chmod 755 "$LOGS_DIR"
+    chown root:root "$INSTALL_CONF_DIR"
+    chmod 755 "$INSTALL_CONF_DIR"
 }
 
 # Copy configuration files
@@ -105,6 +109,7 @@ copy_configs() {
         if [[ -f "$CONFIG_DIR/$systemd_config" ]]; then
             cp "$CONFIG_DIR/$systemd_config" "$TARGET_SYSTEMD_DIR/"
             chmod 644 "$TARGET_SYSTEMD_DIR/$systemd_config"
+            chown root:root "$TARGET_SYSTEMD_DIR/$systemd_config"
             log_info "  → systemd config for $systemd_config copied"
         else
             log_warn "Systemd config for $systemd_config not found: $CONFIG_DIR/$systemd_config"
@@ -115,9 +120,20 @@ copy_configs() {
     if [[ -f "$CONFIG_DIR/$LOGROTATE_CONFIG" ]]; then
         cp "$CONFIG_DIR/$LOGROTATE_CONFIG" "$TARGET_LOGROTATE_DIR/"
         chmod 644 "$TARGET_LOGROTATE_DIR/$LOGROTATE_CONFIG"
+        chown root:root "$TARGET_LOGROTATE_DIR/$LOGROTATE_CONFIG"
         log_info "  → logrotate config copied"
     else
         log_warn "Logrotate config not found: $CONFIG_DIR/$LOGROTATE_CONFIG"
+    fi
+
+    if [[ -f "$CONFIG_DIR/ipc.env" ]]; then
+        cp "$CONFIG_DIR/ipc.env" "$INSTALL_CONF_DIR/ipc.env"
+        chmod 644 "$INSTALL_CONF_DIR/ipc.env"
+        chown root:root "$INSTALL_CONF_DIR/ipc.env"
+        log_info "  → ipc.env copied to $INSTALL_CONF_DIR/ipc.env"
+    else
+        log_warn "ipc.env not found: $CONFIG_DIR/ipc.env"
+        exit 1
     fi
 }
 
@@ -137,6 +153,7 @@ deploy_cron_config() {
 EOF
 
     chmod 644 "$CRON_FILE"
+    chown root:root "$CRON_FILE"
 }
 
 # Build applications

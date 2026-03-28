@@ -1,4 +1,5 @@
 #include <lib/interprocess/interprocess.hpp>
+#include <lib/interprocess/ipc_env.hpp>
 #include <lib/logger.hpp>
 
 #include <fstream>
@@ -11,11 +12,6 @@ namespace {
 
 const std::string kLogfilesDir = "/var/log/hft/";
 const std::string kObserverLogfilePath = kLogfilesDir + "observer.log";
-
-const std::vector<std::pair<const char* const, std::string>> kShmNameToLogfilePath = {
-    {kShmNameFeederToObserver, kLogfilesDir + "feeder.log"},
-    {kShmNameTraderToObserver, kLogfilesDir + "trader.log"},
-};
 
 constexpr uint32_t kReconnectTimeoutSeconds = 1;
 constexpr uint32_t kLivenessThresholdSeconds = 5;
@@ -81,10 +77,15 @@ void RunObserver() {
     Logger::Init(kObserverLogfilePath);
     LOG_INFO << "Observer started!" << Endl;
 
+    const std::vector<std::pair<std::string, std::string>> log_routes = {
+        {IpcFeederToObserverShmName(), kLogfilesDir + "feeder.log"},
+        {IpcTraderToObserverShmName(), kLogfilesDir + "trader.log"},
+    };
+
     std::vector<std::thread> threads;
-    threads.reserve(kShmNameToLogfilePath.size());
-    for (const auto& [shm_name, logfile_path] : kShmNameToLogfilePath) {
-        threads.emplace_back(ProcessLog, shm_name, logfile_path);
+    threads.reserve(log_routes.size());
+    for (const auto& [shm_name, logfile_path] : log_routes) {
+        threads.emplace_back(ProcessLog, shm_name.c_str(), logfile_path);
     }
     for (auto& thread : threads) {
         thread.join();
