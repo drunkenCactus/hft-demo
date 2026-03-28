@@ -2,6 +2,7 @@
 #include <lib/binance/parser.hpp>
 #include <lib/interprocess/hot_path_logger.hpp>
 #include <lib/interprocess/interprocess.hpp>
+#include <lib/interprocess/ipc_env.hpp>
 #include <lib/trade_flow_window.hpp>
 
 #include <span>
@@ -181,8 +182,8 @@ private:
 int RunTrader() {
     std::unique_ptr<ShmToObserver> shm_log = nullptr;
     try {
-        RemoveSharedMemory(kShmNameTraderToObserver);
-        shm_log = std::make_unique<ShmToObserver>(kShmNameTraderToObserver, MemoryRole::kCreateOnly);
+        RemoveSharedMemory(IpcTraderToObserverShmName());
+        shm_log = std::make_unique<ShmToObserver>(IpcTraderToObserverShmName(), MemoryRole::kCreateOnly);
         shm_log->UpdateHeartbeat();
     } catch (const std::exception& e) {
         return 1;
@@ -195,7 +196,7 @@ int RunTrader() {
     std::unique_ptr<ShmMarketData> shm_market_data = nullptr;
     while (shm_market_data == nullptr) {
         try {
-            shm_market_data = std::make_unique<ShmMarketData>(kShmNameMarketData, MemoryRole::kOpenOnly);
+            shm_market_data = std::make_unique<ShmMarketData>(IpcMarketDataShmName(), MemoryRole::kOpenOnly);
         } catch (const ShmVersionConflict& e) {
             HOT_ERROR << e.what() << Endl;
             return 1;

@@ -2,6 +2,7 @@
 #include <lib/binance/parser.hpp>
 #include <lib/interprocess/hot_path_logger.hpp>
 #include <lib/interprocess/interprocess.hpp>
+#include <lib/interprocess/ipc_env.hpp>
 
 #include <rapidjson/document.h>
 
@@ -17,16 +18,16 @@ constexpr const char* kTarget = "/stream?streams=btcusdt@depth@100ms/btcusdt@tra
 
 int RunFeeder() {
     try {
-        RemoveSharedMemory(kShmNameFeederToObserver);
-        ShmToObserver shm_log(kShmNameFeederToObserver, MemoryRole::kCreateOnly);
+        RemoveSharedMemory(IpcFeederToObserverShmName());
+        ShmToObserver shm_log(IpcFeederToObserverShmName(), MemoryRole::kCreateOnly);
         shm_log.UpdateHeartbeat();
         auto [ring_buffer_log] = shm_log.GetObjects();
 
         HotPathLogger::Init(ring_buffer_log);
         HOT_INFO << "Feeder started!" << Endl;
 
-        RemoveSharedMemory(kShmNameMarketData);
-        ShmMarketData shm_market_data(kShmNameMarketData, MemoryRole::kCreateOnly);
+        RemoveSharedMemory(IpcMarketDataShmName());
+        ShmMarketData shm_market_data(IpcMarketDataShmName(), MemoryRole::kCreateOnly);
         shm_market_data.UpdateHeartbeat();
         auto [rb_order_book_updates, rb_trades] = shm_market_data.GetObjects();
         HOT_INFO << "Market Data shared memory created" << Endl;

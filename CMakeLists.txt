@@ -38,6 +38,15 @@ include_directories(
     ${Boost_INCLUDE_DIRS}
 )
 
+add_library(ipc_env
+    STATIC
+    lib/interprocess/ipc_env.cpp
+    lib/interprocess/ipc_env.hpp
+)
+target_link_libraries(ipc_env
+    c++
+)
+
 add_library(hot_path_logger
     STATIC
     lib/log_common.cpp
@@ -95,6 +104,7 @@ target_link_libraries(feeder
     c++
     c++abi
     hot_path_logger
+    ipc_env
 )
 
 target_link_libraries(trader
@@ -105,11 +115,13 @@ target_link_libraries(trader
     c++
     c++abi
     hot_path_logger
+    ipc_env
 )
 
 target_link_libraries(observer
     c++
     logger
+    ipc_env
 )
 
 target_link_libraries(run_tests

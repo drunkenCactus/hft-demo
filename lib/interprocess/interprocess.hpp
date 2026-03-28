@@ -15,8 +15,7 @@ constexpr uint32_t kPriceShift = 8;
 constexpr uint32_t kQuantityShift = 8;
 
 // * * * Market Data * * *
-
-const char* const kShmNameMarketData = "market_data";
+// SHM names: lib/interprocess/ipc_env.hpp (required HFT_IPC_* env vars)
 
 using OrderBookUpdate = OrderBookUpdate_<kCacheLineSize>;
 using Trade = Trade_<kCacheLineSize>;
@@ -46,9 +45,6 @@ using OrderBook = OrderBook_<kOrderBookDepth>;
 using Order = Order_<kCacheLineSize>;
 
 // * * * Observer * * *
-
-const char* const kShmNameFeederToObserver = "feeder_to_observer";
-const char* const kShmNameTraderToObserver = "trader_to_observer";
 
 using ObserverData = ObserverData_<kCacheLineSize, 2 * kCacheLineSize>;
 
