@@ -1,7 +1,6 @@
 #pragma once
 
 #include <lib/interprocess/ring_buffer_data.hpp>
-#include <lib/interprocess/spmc_ring_buffer.hpp>
 #include <lib/interprocess/spsc_ring_buffer.hpp>
 #include <lib/interprocess/shared_memory.hpp>
 #include <lib/local_order_book.hpp>
@@ -22,18 +21,16 @@ const char* const kShmNameMarketData = "market_data";
 using OrderBookUpdate = OrderBookUpdate_<kCacheLineSize>;
 using Trade = Trade_<kCacheLineSize>;
 
-using OrderBookUpdateRingBuffer = SpmcRingBuffer<
+using OrderBookUpdateRingBuffer = SpscRingBuffer<
     OrderBookUpdate,
     kCacheLineSize,
-    4096 /*BufferLength*/,
-    1 /*ConsumersCount*/
+    4096 /*BufferLength*/
 >;
 
-using TradeRingBuffer = SpmcRingBuffer<
+using TradeRingBuffer = SpscRingBuffer<
     Trade,
     kCacheLineSize,
-    4096 /*BufferLength*/,
-    1 /*ConsumersCount*/
+    4096 /*BufferLength*/
 >;
 
 using OrderBookSnapshot = OrderBookSnapshot_<kCacheLineSize, kOrderBookDepth>;
