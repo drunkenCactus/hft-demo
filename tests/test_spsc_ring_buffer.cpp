@@ -22,8 +22,8 @@ TEST(SpscRingBuffer, Size) {
 
     const uint32_t expected_size
         = 1 * kAlignment                             // head_
-        + 1 * kAlignment                             // tails_
-        + 1 * kAlignment                             // active_consumers_
+        + 1 * kAlignment                             // tail_
+        + 1 * kAlignment                             // is_active_consumer_
         + buffer_length * sizeof(RingBufferData);   // data_
     EXPECT_EQ(sizeof(RingBufferTest), expected_size);
 }

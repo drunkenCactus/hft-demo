@@ -11,7 +11,6 @@ namespace hft {
 
 namespace {
 
-constexpr uint32_t kConsumerId = 0;
 constexpr uint32_t kReconnectTimeoutMs = 100;
 constexpr uint32_t kLivenessThresholdSeconds = 5;
 
@@ -24,7 +23,7 @@ public:
 
     [[nodiscard]] bool ProcessUpdate() {
         OrderBookUpdate update;
-        ReadResult result = buffer_->Read(update, kConsumerId);
+        ReadResult result = buffer_->Read(update);
         if (result == ReadResult::kSuccess) {
             if (update.first_update_id > order_book_.LastUpdateId() + 1) {
                 // order_book is corrupted
@@ -93,7 +92,7 @@ public:
 
     [[nodiscard]] bool ProcessTrade() {
         Trade trade;
-        ReadResult result = buffer_->Read(trade, kConsumerId);
+        ReadResult result = buffer_->Read(trade);
         if (result == ReadResult::kSuccess) {
             flow_window_.OnTrade(
                 trade.meta.event_timestamp_microseconds,
@@ -212,8 +211,8 @@ int RunTrader() {
     TradeProcessor trade_processor(rb_trades);
     OrderProcessor order_processor(order_book_processor.Book(), trade_processor.FlowWindow());
 
-    rb_order_book_updates->ResetConsumer(kConsumerId);
-    rb_trades->ResetConsumer(kConsumerId);
+    rb_order_book_updates->ResetConsumer();
+    rb_trades->ResetConsumer();
 
     Order order;
     while (true) {

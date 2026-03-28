@@ -1,4 +1,4 @@
-#include <lib/interprocess/ring_buffer_common.hpp>
+#include <lib/interprocess/spsc_ring_buffer.hpp>
 #include <gtest/gtest.h>
 #include <tests/utils.hpp>
 

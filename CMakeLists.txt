@@ -82,7 +82,6 @@ add_executable(run_tests
     tests/test_local_order_book.cpp
     tests/test_parser.cpp
     tests/test_shared_memory.cpp
-    tests/test_spmc_ring_buffer.cpp
     tests/test_spsc_ring_buffer.cpp
     tests/test_trade_flow_window.cpp
     tests/utils.cpp
