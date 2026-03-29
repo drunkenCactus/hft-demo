@@ -43,6 +43,17 @@ using OrderBook = OrderBook_<kOrderBookDepth>;
 
 using Order = Order_<kCacheLineSize>;
 
+using OrderRingBuffer = SpscRingBuffer<
+    Order,
+    kCacheLineSize,
+    1024 /*BufferLength*/
+>;
+
+using ShmOrder = SharedMemory<
+    kCacheLineSize,
+    OrderRingBuffer
+>;
+
 // * * * Observer * * *
 
 using ObserverData = ObserverData_<kCacheLineSize, 2 * kCacheLineSize>;

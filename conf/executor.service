@@ -1,0 +1,21 @@
+[Unit]
+Description=HFT Executor
+After=network.target
+
+[Service]
+Type=simple
+User=hft-user
+Group=hft-group
+WorkingDirectory=/opt/hft
+EnvironmentFile=/opt/hft/conf/ipc.env
+ExecStart=/opt/hft/bin/executor/executor
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hft-executor
+LimitCORE=infinity
+LimitMEMLOCK=infinity
+
+[Install]
+WantedBy=multi-user.target

@@ -25,6 +25,15 @@
     notifempty
 }
 
+/var/log/hft/executor.log {
+    size 100k
+    rotate 3
+    create 644 hft-user hft-group
+    copytruncate
+    nocompress
+    notifempty
+}
+
 /var/log/hft/observer.log {
     size 100k
     rotate 3

@@ -12,6 +12,7 @@ namespace {
 
 std::once_flag g_once;
 std::string g_feeder_observer_shm;
+std::string g_executor_observer_shm;
 std::array<TraderConfig, kTraderCount> g_trader_configs;
 
 void RequireEnv(const char* env_name, std::string& out) {
@@ -33,9 +34,11 @@ std::string EnvNameIndexed(const char* prefix, std::size_t index) {
 
 void LoadAll() {
     RequireEnv("HFT_IPC_SHM_FEEDER_TO_OBSERVER", g_feeder_observer_shm);
+    RequireEnv("HFT_IPC_SHM_EXECUTOR_TO_OBSERVER", g_executor_observer_shm);
     for (std::size_t i = 0; i < kTraderCount; ++i) {
         RequireEnv(EnvNameIndexed("HFT_IPC_SHM_MARKET_DATA_", i).c_str(), g_trader_configs[i].market_data_shm);
         RequireEnv(EnvNameIndexed("HFT_IPC_SHM_TRADER_OBSERVER_", i).c_str(), g_trader_configs[i].trader_observer_shm);
+        RequireEnv(EnvNameIndexed("HFT_IPC_SHM_ORDER_", i).c_str(), g_trader_configs[i].order_shm);
     }
 }
 
@@ -64,6 +67,11 @@ TraderId ParseTraderIdOrAbort(std::string_view role) noexcept {
 const char* IpcFeederToObserverShmName() {
     EnsureIpcParamsLoaded();
     return g_feeder_observer_shm.c_str();
+}
+
+const char* IpcExecutorToObserverShmName() {
+    EnsureIpcParamsLoaded();
+    return g_executor_observer_shm.c_str();
 }
 
 const TraderConfig& GetTraderConfig(TraderId id) {

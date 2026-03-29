@@ -78,6 +78,11 @@ add_executable(trader
     trader/trader.cpp
 )
 
+add_executable(executor
+    executor/main.cpp
+    executor/executor.cpp
+)
+
 add_executable(observer
     observer/main.cpp
     observer/observer.cpp
@@ -111,6 +116,14 @@ target_link_libraries(trader
     ${Boost_LIBRARIES}
     ssl
     crypto
+    pthread
+    c++
+    c++abi
+    hot_path_logger
+    ipc_params
+)
+
+target_link_libraries(executor
     pthread
     c++
     c++abi
