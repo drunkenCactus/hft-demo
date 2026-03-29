@@ -167,7 +167,7 @@ private:
     );
 };
 
-inline void RemoveSharedMemory(const char* const name) {
+inline void RemoveSharedMemory(const char* const name) noexcept {
     bip::shared_memory_object::remove(name);
 }
 

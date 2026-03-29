@@ -45,7 +45,7 @@ void EnsureIpcParamsLoaded() {
 
 }  // namespace
 
-TraderId ParseTraderIdOrAbort(std::string_view role) {
+TraderId ParseTraderIdOrAbort(std::string_view role) noexcept {
     if (role == "trader_btcusdt") {
         return TraderId::kBtcUsdt;
     }

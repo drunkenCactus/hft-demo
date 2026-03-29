@@ -26,7 +26,7 @@ struct alignas(Alignment) AlignedAtomic {
 };
 
 template <uint32_t BufferLength>
-inline uint32_t Increment(const uint32_t current) noexcept {
+constexpr uint32_t Increment(const uint32_t current) noexcept {
     static_assert(
         (BufferLength != 0) && ((BufferLength & (BufferLength - 1)) == 0),
         "BufferLength must be power of 2"

@@ -101,7 +101,7 @@ public:
         : buffer_(buffer)
     {}
 
-    [[nodiscard]] bool ProcessTrade() {
+    [[nodiscard]] bool ProcessTrade() noexcept {
         Trade trade;
         ReadResult result = buffer_->Read(trade);
         if (result == ReadResult::kSuccess) {
