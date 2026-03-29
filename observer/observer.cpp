@@ -90,6 +90,7 @@ void RunObserver() {
 
     std::vector<std::pair<std::string, std::string>> log_routes;
     log_routes.emplace_back(IpcFeederToObserverShmName(), kLogfilesDir + "feeder.log");
+    log_routes.emplace_back(IpcExecutorToObserverShmName(), kLogfilesDir + "executor.log");
     for (std::size_t i = 0; i < kTraderCount; ++i) {
         const auto id = static_cast<TraderId>(i);
         const TraderConfig& cfg = GetTraderConfig(id);

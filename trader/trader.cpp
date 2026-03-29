@@ -21,8 +21,20 @@ constexpr const char* BinanceSymbol(TraderId id) noexcept {
             return "BTCUSDT";
         case TraderId::kEthUsdt:
             return "ETHUSDT";
+        default:
+            return "";
     }
-    return "";
+}
+
+constexpr Symbol SymbolForTrader(TraderId id) noexcept {
+    switch (id) {
+        case TraderId::kBtcUsdt:
+            return Symbol::kBtcUsdt;
+        case TraderId::kEthUsdt:
+            return Symbol::kEthUsdt;
+        default:
+            return Symbol::kUnknown;
+    }
 }
 
 class OrderBookProcessor {
@@ -205,6 +217,18 @@ int RunTrader(const TraderId trader_id) {
     HotPathLogger::Init(ring_buffer_log);
     HOT_INFO << "Trader " << BinanceSymbol(trader_id) << " started!" << Endl;
 
+    std::unique_ptr<ShmOrder> shm_order = nullptr;
+    try {
+        RemoveSharedMemory(cfg.order_shm.c_str());
+        shm_order = std::make_unique<ShmOrder>(cfg.order_shm.c_str(), MemoryRole::kCreateOnly);
+        shm_order->UpdateHeartbeat();
+    } catch (const std::exception& e) {
+        HOT_ERROR << "Failed to create order shm: " << cfg.order_shm.c_str() << ": " << e.what() << Endl;
+        return 1;
+    }
+    auto [rb_order] = shm_order->GetObjects();
+    HOT_INFO << "Order shm created: " << cfg.order_shm.c_str() << Endl;
+
     std::unique_ptr<ShmMarketData> shm_market_data = nullptr;
     while (shm_market_data == nullptr) {
         try {
@@ -234,6 +258,7 @@ int RunTrader(const TraderId trader_id) {
             return 1;
         }
         shm_log->UpdateHeartbeat();
+        shm_order->UpdateHeartbeat();
         if (!order_book_processor.ProcessUpdate()) {
             return 1;
         }
@@ -241,9 +266,8 @@ int RunTrader(const TraderId trader_id) {
             return 1;
         }
         if (order_processor.CreateOrder(order)) {
-            HOT_INFO << "Created order for " << BinanceSymbol(trader_id) << ": "
-                     << (order.type == Order::Type::kBuy ? "BUY" : "SELL")
-                     << " price=" << order.price << " qty=" << order.quantity << Endl;
+            order.symbol = SymbolForTrader(trader_id);
+            rb_order->Write(order);
         }
     }
 

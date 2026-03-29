@@ -23,9 +23,12 @@ TraderId ParseTraderIdOrAbort(std::string_view role) noexcept;
 struct TraderConfig {
     std::string market_data_shm;
     std::string trader_observer_shm;
+    std::string order_shm;
 };
 
 const char* IpcFeederToObserverShmName();
+
+const char* IpcExecutorToObserverShmName();
 
 const TraderConfig& GetTraderConfig(TraderId id);
 

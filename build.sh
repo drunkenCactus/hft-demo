@@ -28,9 +28,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Binaries under /opt/hft/bin/<name>/<name>
-APP_NAMES=("feeder" "trader" "observer")
+APP_NAMES=("feeder" "trader" "executor" "observer")
 # systemd unit names (without .service)
-SERVICE_NAMES=("feeder" "trader_btcusdt" "trader_ethusdt" "observer")
+SERVICE_NAMES=("feeder" "trader_btcusdt" "trader_ethusdt" "executor" "observer")
 APP_USER="hft-user"
 APP_GROUP="hft-group"
 
@@ -45,7 +45,7 @@ TARGET_SYSTEMD_DIR="/etc/systemd/system"
 TARGET_LOGROTATE_DIR="/etc/logrotate.d"
 
 # Configuration files
-SYSTEMD_CONFIGS=("feeder.service" "trader_btcusdt.service" "trader_ethusdt.service" "observer.service")
+SYSTEMD_CONFIGS=("feeder.service" "trader_btcusdt.service" "trader_ethusdt.service" "executor.service" "observer.service")
 LOGROTATE_CONFIG="hft_logrotate"
 
 # ============================================

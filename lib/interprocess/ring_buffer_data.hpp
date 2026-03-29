@@ -70,6 +70,7 @@ struct alignas(Alignment) Order_ {
     uint64_t price = 0;
     uint64_t quantity = 0;
     Type type = Type::kBuy;
+    Symbol symbol = Symbol::kUnknown;
 };
 
 template <uint32_t Alignment, uint32_t DataSize>
