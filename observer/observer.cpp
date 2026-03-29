@@ -17,7 +17,7 @@ const std::string kObserverLogfilePath = kLogfilesDir + "observer.log";
 constexpr uint32_t kReconnectTimeoutSeconds = 1;
 constexpr uint32_t kLivenessThresholdSeconds = 5;
 
-const char* GetTraderLogfilePath(TraderId id) noexcept {
+constexpr const char* GetTraderLogfilePath(TraderId id) noexcept {
     switch (id) {
         case TraderId::kBtcUsdt:
             return "trader_btcusdt.log";

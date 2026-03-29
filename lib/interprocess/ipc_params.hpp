@@ -18,7 +18,7 @@ constexpr std::size_t TraderIdToIndex(TraderId id) noexcept {
     return static_cast<std::size_t>(id);
 }
 
-TraderId ParseTraderIdOrAbort(std::string_view role);
+TraderId ParseTraderIdOrAbort(std::string_view role) noexcept;
 
 struct TraderConfig {
     std::string market_data_shm;
