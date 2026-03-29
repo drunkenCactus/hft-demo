@@ -2,7 +2,7 @@
 #include <lib/binance/parser.hpp>
 #include <lib/interprocess/hot_path_logger.hpp>
 #include <lib/interprocess/interprocess.hpp>
-#include <lib/interprocess/ipc_env.hpp>
+#include <lib/interprocess/ipc_params.hpp>
 #include <lib/trade_flow_window.hpp>
 
 #include <span>
@@ -15,11 +15,21 @@ namespace {
 constexpr uint32_t kReconnectTimeoutMs = 100;
 constexpr uint32_t kLivenessThresholdSeconds = 5;
 
+constexpr const char* BinanceSymbol(TraderId id) noexcept {
+    switch (id) {
+        case TraderId::kBtcUsdt:
+            return "BTCUSDT";
+        case TraderId::kEthUsdt:
+            return "ETHUSDT";
+    }
+    return "";
+}
+
 class OrderBookProcessor {
 public:
-    OrderBookProcessor(OrderBookUpdateRingBuffer* buffer)
+    OrderBookProcessor(OrderBookUpdateRingBuffer* buffer, std::string_view exchange_symbol)
         : buffer_(buffer)
-        , binance_api_client_("BTCUSDT", kOrderBookDepth)
+        , binance_api_client_(exchange_symbol, kOrderBookDepth)
     {}
 
     [[nodiscard]] bool ProcessUpdate() {
@@ -87,7 +97,7 @@ private:
 
 class TradeProcessor {
 public:
-    TradeProcessor(TradeRingBuffer* buffer)
+    explicit TradeProcessor(TradeRingBuffer* buffer)
         : buffer_(buffer)
     {}
 
@@ -179,11 +189,13 @@ private:
 
 }  // namespace
 
-int RunTrader() {
+int RunTrader(const TraderId trader_id) {
+    const TraderConfig& cfg = GetTraderConfig(trader_id);
+
     std::unique_ptr<ShmToObserver> shm_log = nullptr;
     try {
-        RemoveSharedMemory(IpcTraderToObserverShmName());
-        shm_log = std::make_unique<ShmToObserver>(IpcTraderToObserverShmName(), MemoryRole::kCreateOnly);
+        RemoveSharedMemory(cfg.trader_observer_shm.c_str());
+        shm_log = std::make_unique<ShmToObserver>(cfg.trader_observer_shm.c_str(), MemoryRole::kCreateOnly);
         shm_log->UpdateHeartbeat();
     } catch (const std::exception& e) {
         return 1;
@@ -191,24 +203,24 @@ int RunTrader() {
 
     auto [ring_buffer_log] = shm_log->GetObjects();
     HotPathLogger::Init(ring_buffer_log);
-    HOT_INFO << "Trader started!" << Endl;
+    HOT_INFO << "Trader " << BinanceSymbol(trader_id) << " started!" << Endl;
 
     std::unique_ptr<ShmMarketData> shm_market_data = nullptr;
     while (shm_market_data == nullptr) {
         try {
-            shm_market_data = std::make_unique<ShmMarketData>(IpcMarketDataShmName(), MemoryRole::kOpenOnly);
+            shm_market_data = std::make_unique<ShmMarketData>(cfg.market_data_shm.c_str(), MemoryRole::kOpenOnly);
         } catch (const ShmVersionConflict& e) {
             HOT_ERROR << e.what() << Endl;
             return 1;
         } catch (const std::exception& e) {
-            HOT_WARNING << "Failed to open Market Data shared memory: " << e.what() << Endl;
+            HOT_WARNING << "Failed to open Market Data shm: " << cfg.market_data_shm.c_str() << ": " << e.what() << Endl;
             std::this_thread::sleep_for(std::chrono::milliseconds(kReconnectTimeoutMs));
         }
     }
-    HOT_INFO << "Market Data shared memory opened" << Endl;
+    HOT_INFO << "Market Data shm opened: " << cfg.market_data_shm.c_str() << Endl;
 
     auto [rb_order_book_updates, rb_trades] = shm_market_data->GetObjects();
-    OrderBookProcessor order_book_processor(rb_order_book_updates);
+    OrderBookProcessor order_book_processor(rb_order_book_updates, BinanceSymbol(trader_id));
     TradeProcessor trade_processor(rb_trades);
     OrderProcessor order_processor(order_book_processor.Book(), trade_processor.FlowWindow());
 
@@ -229,7 +241,8 @@ int RunTrader() {
             return 1;
         }
         if (order_processor.CreateOrder(order)) {
-            HOT_INFO << "Created order: " << (order.type == Order::Type::kBuy ? "BUY" : "SELL")
+            HOT_INFO << "Created order for " << BinanceSymbol(trader_id) << ": "
+                     << (order.type == Order::Type::kBuy ? "BUY" : "SELL")
                      << " price=" << order.price << " qty=" << order.quantity << Endl;
         }
     }
