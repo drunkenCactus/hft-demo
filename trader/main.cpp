@@ -1,6 +1,6 @@
 #include "trader.hpp"
 
-#include <lib/interprocess/trader_id.hpp>
+#include <lib/interprocess/ipc_params.hpp>
 
 #include <cstdio>
 #include <cstring>

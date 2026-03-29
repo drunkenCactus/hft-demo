@@ -42,8 +42,6 @@ add_library(ipc_params
     STATIC
     lib/interprocess/ipc_params.cpp
     lib/interprocess/ipc_params.hpp
-    lib/interprocess/trader_id.cpp
-    lib/interprocess/trader_id.hpp
 )
 target_link_libraries(ipc_params
     c++

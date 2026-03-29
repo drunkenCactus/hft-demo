@@ -4,7 +4,6 @@
 #include <lib/interprocess/interprocess.hpp>
 #include <lib/interprocess/ipc_params.hpp>
 #include <lib/interprocess/ring_buffer_data.hpp>
-#include <lib/interprocess/trader_id.hpp>
 
 #include <array>
 #include <memory>

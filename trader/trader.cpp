@@ -3,7 +3,6 @@
 #include <lib/interprocess/hot_path_logger.hpp>
 #include <lib/interprocess/interprocess.hpp>
 #include <lib/interprocess/ipc_params.hpp>
-#include <lib/interprocess/trader_id.hpp>
 #include <lib/trade_flow_window.hpp>
 
 #include <span>
@@ -15,6 +14,16 @@ namespace {
 
 constexpr uint32_t kReconnectTimeoutMs = 100;
 constexpr uint32_t kLivenessThresholdSeconds = 5;
+
+constexpr const char* BinanceSymbol(TraderId id) noexcept {
+    switch (id) {
+        case TraderId::kBtcUsdt:
+            return "BTCUSDT";
+        case TraderId::kEthUsdt:
+            return "ETHUSDT";
+    }
+    return "";
+}
 
 class OrderBookProcessor {
 public:

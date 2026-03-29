@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lib/interprocess/trader_id.hpp>
+#include <lib/interprocess/ipc_params.hpp>
 
 namespace hft {
 
