@@ -5,8 +5,8 @@
 #include <lib/interprocess/ipc_params.hpp>
 #include <lib/interprocess/ring_buffer_data.hpp>
 
-#include <array>
 #include <memory>
+#include <optional>
 
 namespace hft {
 
@@ -21,6 +21,17 @@ struct MarketDataBuffers {
     TradeRingBuffer* trades = nullptr;
 };
 
+constexpr std::optional<TraderId> TraderIdForSymbol(Symbol symbol) noexcept {
+    switch (symbol) {
+        case Symbol::kBtcUsdt:
+            return TraderId::kBtcUsdt;
+        case Symbol::kEthUsdt:
+            return TraderId::kEthUsdt;
+        default:
+            return std::nullopt;
+    }
+}
+
 }  // namespace
 
 int RunFeeder() {
@@ -33,17 +44,17 @@ int RunFeeder() {
         HotPathLogger::Init(ring_buffer_log);
         HOT_INFO << "Feeder started!" << Endl;
 
-        std::array<std::unique_ptr<ShmMarketData>, kTraderCount> md_shm;
-        std::array<MarketDataBuffers, kTraderCount> md_buffers;
+        ArrayByTraderId<std::unique_ptr<ShmMarketData>> md_shm{};
+        ArrayByTraderId<MarketDataBuffers> md_buffers{};
 
-        for (std::size_t i = 0; i < kTraderCount; ++i) {
-            const TraderConfig& cfg = GetTraderConfig(static_cast<TraderId>(i));
+        for (TraderId id : kTraderIds) {
+            const TraderConfig& cfg = GetTraderConfig(id);
             RemoveSharedMemory(cfg.market_data_shm.c_str());
-            md_shm[i] = std::make_unique<ShmMarketData>(cfg.market_data_shm.c_str(), MemoryRole::kCreateOnly);
-            md_shm[i]->UpdateHeartbeat();
-            auto [rb_order_book_updates, rb_trades] = md_shm[i]->GetObjects();
-            md_buffers[i].order_book_updates = rb_order_book_updates;
-            md_buffers[i].trades = rb_trades;
+            md_shm[id] = std::make_unique<ShmMarketData>(cfg.market_data_shm.c_str(), MemoryRole::kCreateOnly);
+            md_shm[id]->UpdateHeartbeat();
+            auto [rb_order_book_updates, rb_trades] = md_shm[id]->GetObjects();
+            md_buffers[id].order_book_updates = rb_order_book_updates;
+            md_buffers[id].trades = rb_trades;
             HOT_INFO << "Market Data shm created: " << cfg.market_data_shm.c_str() << Endl;
         }
 
@@ -51,35 +62,21 @@ int RunFeeder() {
         HOT_INFO << "Binance websocket connected" << Endl;
 
         auto order_book_update_callback = [&md_buffers](const OrderBookUpdate& order_book_update) {
-            switch (order_book_update.symbol) {
-                case Symbol::kBtcUsdt:
-                    md_buffers[TraderIdToIndex(TraderId::kBtcUsdt)].order_book_updates->Write(order_book_update);
-                    break;
-                case Symbol::kEthUsdt:
-                    md_buffers[TraderIdToIndex(TraderId::kEthUsdt)].order_book_updates->Write(order_book_update);
-                    break;
-                default:
-                    break;
+            if (const std::optional<TraderId> id = TraderIdForSymbol(order_book_update.symbol); id.has_value()) {
+                md_buffers[id.value()].order_book_updates->Write(order_book_update);
             }
         };
 
         auto trade_callback = [&md_buffers](const Trade& trade) {
-            switch (trade.symbol) {
-                case Symbol::kBtcUsdt:
-                    md_buffers[TraderIdToIndex(TraderId::kBtcUsdt)].trades->Write(trade);
-                    break;
-                case Symbol::kEthUsdt:
-                    md_buffers[TraderIdToIndex(TraderId::kEthUsdt)].trades->Write(trade);
-                    break;
-                default:
-                    break;
+            if (const std::optional<TraderId> id = TraderIdForSymbol(trade.symbol); id.has_value()) {
+                md_buffers[id.value()].trades->Write(trade);
             }
         };
 
         while (true) {
             shm_log.UpdateHeartbeat();
-            for (std::size_t i = 0; i < kTraderCount; ++i) {
-                md_shm[i]->UpdateHeartbeat();
+            for (TraderId id : kTraderIds) {
+                md_shm[id]->UpdateHeartbeat();
             }
 
             std::string_view message = client.Read();
