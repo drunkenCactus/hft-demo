@@ -4,9 +4,8 @@
 #include <lib/interprocess/interprocess.hpp>
 #include <lib/interprocess/ipc_params.hpp>
 
-#include <array>
 #include <chrono>
-#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <thread>
 
@@ -44,41 +43,41 @@ int RunExecutor() {
     HotPathLogger::Init(ring_buffer_log);
     HOT_INFO << "Executor started!" << Endl;
 
-    std::array<std::unique_ptr<ShmOrder>, kTraderCount> shm_order{};
-    std::array<OrderRingBuffer*, kTraderCount> rb_order{};
+    ArrayByTraderId<std::unique_ptr<ShmOrder>> shm_order{};
+    ArrayByTraderId<OrderRingBuffer*> rb_order{};
 
-    for (std::size_t i = 0; i < kTraderCount; ++i) {
-        while (shm_order[i] == nullptr) {
+    for (TraderId id : kTraderIds) {
+        while (shm_order[id] == nullptr) {
             try {
-                const TraderConfig& cfg = GetTraderConfig(static_cast<TraderId>(i));
-                shm_order[i] = std::make_unique<ShmOrder>(cfg.order_shm.c_str(), MemoryRole::kOpenOnly);
+                const TraderConfig& cfg = GetTraderConfig(id);
+                shm_order[id] = std::make_unique<ShmOrder>(cfg.order_shm.c_str(), MemoryRole::kOpenOnly);
             } catch (const ShmVersionConflict& e) {
                 HOT_ERROR << e.what() << Endl;
                 return 1;
             } catch (const std::exception& e) {
-                HOT_WARNING << "Failed to open order shm for trader " << i << ": " << e.what() << Endl;
+                HOT_WARNING << "Failed to open order shm for trader " << std::to_underlying(id) << ": " << e.what() << Endl;
                 std::this_thread::sleep_for(std::chrono::milliseconds(kReconnectTimeoutMs));
             }
         }
-        rb_order[i] = std::get<OrderRingBuffer*>(shm_order[i]->GetObjects());
-        HOT_INFO << "Order shm opened for trader " << i << Endl;
+        rb_order[id] = std::get<OrderRingBuffer*>(shm_order[id]->GetObjects());
+        HOT_INFO << "Order shm opened for trader " << std::to_underlying(id) << Endl;
     }
 
     Order order;
     while (true) {
         shm_log->UpdateHeartbeat();
-        for (std::size_t i = 0; i < kTraderCount; ++i) {
-            if (!shm_order[i]->IsProducerAlive(kLivenessThresholdSeconds)) {
-                HOT_ERROR << "Producer " << i << " is dead" << Endl;
+        for (TraderId id : kTraderIds) {
+            if (!shm_order[id]->IsProducerAlive(kLivenessThresholdSeconds)) {
+                HOT_ERROR << "Producer " << std::to_underlying(id) << " is dead" << Endl;
                 return 1;
             }
-            const ReadResult result = rb_order[i]->Read(order);
+            const ReadResult result = rb_order[id]->Read(order);
             if (result == ReadResult::kSuccess) {
                 HOT_INFO << SymbolLabel(order.symbol) << " "
                          << (order.type == Order::Type::kBuy ? "BUY" : "SELL") << " price=" << order.price
                          << " qty=" << order.quantity << Endl;
             } else if (result == ReadResult::kConsumerIsDisabled) {
-                HOT_ERROR << "Consumer " << i << " is disabled" << Endl;
+                HOT_ERROR << "Consumer " << std::to_underlying(id) << " is disabled" << Endl;
                 return 1;
             }
         }
