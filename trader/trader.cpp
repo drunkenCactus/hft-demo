@@ -5,8 +5,10 @@
 #include <lib/interprocess/ipc_params.hpp>
 #include <lib/trade_flow_window.hpp>
 
+#include <algorithm>
 #include <span>
 #include <thread>
+#include <utility>
 
 namespace hft {
 
@@ -44,10 +46,12 @@ public:
         , binance_api_client_(exchange_symbol, kOrderBookDepth)
     {}
 
-    [[nodiscard]] bool ProcessUpdate() {
+    template <typename OnReadSteadyNs>
+    [[nodiscard]] bool ProcessUpdate(OnReadSteadyNs&& on_read_steady_ns) {
         OrderBookUpdate update;
         ReadResult result = buffer_->Read(update);
         if (result == ReadResult::kSuccess) {
+            std::forward<OnReadSteadyNs>(on_read_steady_ns)(update.steady_nanoseconds);
             if (update.first_update_id > order_book_.LastUpdateId() + 1) {
                 // order_book is corrupted
                 HOT_WARNING << "Order book snapshot is corrupted" << Endl;
@@ -113,12 +117,14 @@ public:
         : buffer_(buffer)
     {}
 
-    [[nodiscard]] bool ProcessTrade() noexcept {
+    template <typename OnReadSteadyNs>
+    [[nodiscard]] bool ProcessTrade(OnReadSteadyNs&& on_read_steady_ns) noexcept {
         Trade trade;
         ReadResult result = buffer_->Read(trade);
         if (result == ReadResult::kSuccess) {
+            std::forward<OnReadSteadyNs>(on_read_steady_ns)(trade.steady_nanoseconds);
             flow_window_.OnTrade(
-                trade.meta.event_timestamp_microseconds,
+                trade.event_timestamp_microseconds,
                 trade.is_buyer_maker,
                 trade.quantity
             );
@@ -251,6 +257,16 @@ int RunTrader(const TraderId trader_id) {
     rb_order_book_updates->ResetConsumer();
     rb_trades->ResetConsumer();
 
+    uint64_t last_depth_steady_ns = 0;
+    uint64_t last_trade_steady_ns = 0;
+
+    const auto on_depth_read = [&](uint64_t steady_ns) {
+        last_depth_steady_ns = steady_ns;
+    };
+    const auto on_trade_read = [&](uint64_t steady_ns) {
+        last_trade_steady_ns = steady_ns;
+    };
+
     Order order;
     while (true) {
         if (!shm_market_data->IsProducerAlive(kLivenessThresholdSeconds)) {
@@ -259,14 +275,15 @@ int RunTrader(const TraderId trader_id) {
         }
         shm_log->UpdateHeartbeat();
         shm_order->UpdateHeartbeat();
-        if (!order_book_processor.ProcessUpdate()) {
+        if (!order_book_processor.ProcessUpdate(on_depth_read)) {
             return 1;
         }
-        if (!trade_processor.ProcessTrade()) {
+        if (!trade_processor.ProcessTrade(on_trade_read)) {
             return 1;
         }
         if (order_processor.CreateOrder(order)) {
             order.symbol = SymbolForTrader(trader_id);
+            order.steady_nanoseconds = std::max(last_depth_steady_ns, last_trade_steady_ns);
             rb_order->Write(order);
         }
     }

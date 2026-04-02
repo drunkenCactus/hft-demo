@@ -1,5 +1,6 @@
 #include "executor.hpp"
 
+#include <lib/common.hpp>
 #include <lib/interprocess/hot_path_logger.hpp>
 #include <lib/interprocess/interprocess.hpp>
 #include <lib/interprocess/ipc_params.hpp>
@@ -73,9 +74,14 @@ int RunExecutor() {
             }
             const ReadResult result = rb_order[id]->Read(order);
             if (result == ReadResult::kSuccess) {
+                const uint64_t now_steady_ns = SteadyNanoseconds();
+                uint64_t latency_ns = 0;
+                if (order.steady_nanoseconds != 0 && now_steady_ns >= order.steady_nanoseconds) {
+                    latency_ns = now_steady_ns - order.steady_nanoseconds;
+                }
                 HOT_INFO << SymbolLabel(order.symbol) << " "
                          << (order.type == Order::Type::kBuy ? "BUY" : "SELL") << " price=" << order.price
-                         << " qty=" << order.quantity << Endl;
+                         << " qty=" << order.quantity << " latency_ns=" << latency_ns << Endl;
             } else if (result == ReadResult::kConsumerIsDisabled) {
                 HOT_ERROR << "Consumer " << std::to_underlying(id) << " is disabled" << Endl;
                 return 1;

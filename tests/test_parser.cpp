@@ -85,7 +85,7 @@ TEST(Parser, ParseDepthEvent_Success_EventTimeMilliseconds_AutoConverted) {
     });
 
     ASSERT_TRUE(ok);
-    EXPECT_EQ(captured.meta.event_timestamp_microseconds, 1672515782136000u);
+    EXPECT_EQ(captured.event_timestamp_microseconds, 1672515782136000u);
     EXPECT_EQ(captured.symbol, Symbol::kEthUsdt);
 }
 
@@ -106,7 +106,7 @@ TEST(Parser, ParseDepthEvent_Success_EventTimeMicroseconds_UsedAsIs) {
     });
 
     ASSERT_TRUE(ok);
-    EXPECT_EQ(captured.meta.event_timestamp_microseconds, 1672515782136123u);
+    EXPECT_EQ(captured.event_timestamp_microseconds, 1672515782136123u);
     EXPECT_EQ(captured.symbol, Symbol::kEthUsdt);
 }
 
@@ -216,7 +216,7 @@ TEST(Parser, ParseTradeEvent_Success_EventTimeMilliseconds_AutoConverted) {
     EXPECT_EQ(captured.symbol, Symbol::kBtcUsdt);
     EXPECT_EQ(captured.price, 100000ULL);      // 0.001 * 10^8
     EXPECT_EQ(captured.quantity, 100ULL * kQuantityScale);
-    EXPECT_EQ(captured.meta.event_timestamp_microseconds, 1672515782136000u);
+    EXPECT_EQ(captured.event_timestamp_microseconds, 1672515782136000u);
     EXPECT_TRUE(captured.is_buyer_maker);
 }
 
@@ -239,7 +239,7 @@ TEST(Parser, ParseTradeEvent_Success_EventTimeMicroseconds_UsedAsIs) {
     EXPECT_EQ(captured.symbol, Symbol::kBtcUsdt);
     EXPECT_EQ(captured.price, 100000ULL);
     EXPECT_EQ(captured.quantity, 100ULL * kQuantityScale);
-    EXPECT_EQ(captured.meta.event_timestamp_microseconds, 1672515782136123u);
+    EXPECT_EQ(captured.event_timestamp_microseconds, 1672515782136123u);
     EXPECT_FALSE(captured.is_buyer_maker);
 }
 
@@ -410,6 +410,7 @@ TEST(Parser, ParseEvent_DepthStream_InvokesOrderBookCallback) {
     bool trade_called = false;
     bool ok = ParseEvent(
         json,
+        42,
         [&updates](const OrderBookUpdate& u) { updates.push_back(u); },
         [&trade_captured, &trade_called](const Trade& t) {
             trade_captured = t;
@@ -418,6 +419,8 @@ TEST(Parser, ParseEvent_DepthStream_InvokesOrderBookCallback) {
 
     ASSERT_TRUE(ok);
     ASSERT_EQ(updates.size(), 2u);
+    EXPECT_EQ(updates[0].steady_nanoseconds, 42u);
+    EXPECT_EQ(updates[1].steady_nanoseconds, 42u);
     EXPECT_FALSE(trade_called);
     EXPECT_EQ(updates[0].type, OrderBookUpdate::Type::kBid);
     EXPECT_EQ(updates[0].price, 240000ULL);
@@ -444,6 +447,7 @@ TEST(Parser, ParseEvent_DepthStreamBtcusdtAtDepth_Equivalent) {
     std::vector<OrderBookUpdate> updates;
     bool ok = ParseEvent(
         json,
+        0,
         [&updates](const OrderBookUpdate& u) { updates.push_back(u); },
         [](const Trade&) {});
 
@@ -471,6 +475,7 @@ TEST(Parser, ParseEvent_TradeStream_InvokesTradeCallback) {
     bool depth_called = false;
     bool ok = ParseEvent(
         json,
+        0,
         [&depth_called](const OrderBookUpdate&) { depth_called = true; },
         [&trade_captured](const Trade& t) { trade_captured = t; });
 
@@ -498,6 +503,7 @@ TEST(Parser, ParseEvent_OtherInstrument_AcceptedBySuffix) {
     Trade trade_captured;
     bool ok = ParseEvent(
         json,
+        0,
         [](const OrderBookUpdate&) {},
         [&trade_captured](const Trade& t) { trade_captured = t; });
 
@@ -510,19 +516,19 @@ TEST(Parser, ParseEvent_OtherInstrument_AcceptedBySuffix) {
 
 TEST(Parser, ParseEvent_Failure_InvalidJson) {
     const std::string json = "{ invalid ";
-    bool ok = ParseEvent(json, [](const OrderBookUpdate&) {}, [](const Trade&) {});
+    bool ok = ParseEvent(json, 0, [](const OrderBookUpdate&) {}, [](const Trade&) {});
     EXPECT_FALSE(ok);
 }
 
 TEST(Parser, ParseEvent_Failure_MissingStream) {
     const std::string json = R"({"data": {"e": "trade", "p": "1", "q": "1"}})";
-    bool ok = ParseEvent(json, [](const OrderBookUpdate&) {}, [](const Trade&) {});
+    bool ok = ParseEvent(json, 0, [](const OrderBookUpdate&) {}, [](const Trade&) {});
     EXPECT_FALSE(ok);
 }
 
 TEST(Parser, ParseEvent_Failure_MissingData) {
     const std::string json = R"({"stream": "btcusdt@trade"})";
-    bool ok = ParseEvent(json, [](const OrderBookUpdate&) {}, [](const Trade&) {});
+    bool ok = ParseEvent(json, 0, [](const OrderBookUpdate&) {}, [](const Trade&) {});
     EXPECT_FALSE(ok);
 }
 
@@ -531,7 +537,7 @@ TEST(Parser, ParseEvent_Failure_UnknownStream) {
         "stream": "btcusdt@aggTrade",
         "data": {}
     })";
-    bool ok = ParseEvent(json, [](const OrderBookUpdate&) {}, [](const Trade&) {});
+    bool ok = ParseEvent(json, 0, [](const OrderBookUpdate&) {}, [](const Trade&) {});
     EXPECT_FALSE(ok);
 }
 
