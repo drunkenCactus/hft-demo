@@ -1,5 +1,6 @@
 #include <lib/binance/binance_ws_client.hpp>
 #include <lib/binance/parser.hpp>
+#include <lib/common.hpp>
 #include <lib/interprocess/hot_path_logger.hpp>
 #include <lib/interprocess/interprocess.hpp>
 #include <lib/interprocess/ipc_params.hpp>
@@ -80,7 +81,8 @@ int RunFeeder() {
             }
 
             std::string_view message = client.Read();
-            if (!ParseEvent(message, order_book_update_callback, trade_callback)) {
+            const uint64_t steady_ns = SteadyNanoseconds();
+            if (!ParseEvent(message, steady_ns, order_book_update_callback, trade_callback)) {
                 HOT_WARNING << "Parsing error" << Endl;
             }
         }

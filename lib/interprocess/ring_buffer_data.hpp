@@ -12,14 +12,9 @@ enum class Symbol : uint8_t {
     kEthUsdt,
 };
 
-struct MessageMeta {
-    uint64_t event_timestamp_microseconds = 0;
-    uint64_t parsing_timestamp_microseconds = 0;
-};
-
 template <uint32_t Alignment, uint32_t Depth>
 struct alignas(Alignment) OrderBookSnapshot_ {
-    MessageMeta meta;
+    uint64_t event_timestamp_microseconds = 0;
     uint64_t last_update_id = 0;
     uint64_t bids_prices[Depth]{};
     uint64_t bids_quantities[Depth]{};
@@ -42,7 +37,8 @@ struct alignas(Alignment) OrderBookUpdate_ {
         kAsk,
     };
 
-    MessageMeta meta;
+    uint64_t event_timestamp_microseconds = 0;
+    uint64_t steady_nanoseconds = 0;
     uint64_t first_update_id = 0;
     uint64_t last_update_id = 0;
     uint64_t price = 0;
@@ -53,7 +49,8 @@ struct alignas(Alignment) OrderBookUpdate_ {
 
 template <uint32_t Alignment>
 struct alignas(Alignment) Trade_ {
-    MessageMeta meta;
+    uint64_t event_timestamp_microseconds = 0;
+    uint64_t steady_nanoseconds = 0;
     uint64_t price = 0;
     uint64_t quantity = 0;
     Symbol symbol = Symbol::kUnknown;
@@ -67,6 +64,7 @@ struct alignas(Alignment) Order_ {
         kSell,
     };
 
+    uint64_t steady_nanoseconds = 0;
     uint64_t price = 0;
     uint64_t quantity = 0;
     Type type = Type::kBuy;
