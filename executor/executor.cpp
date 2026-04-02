@@ -28,6 +28,18 @@ constexpr const char* SymbolLabel(Symbol symbol) noexcept {
     }
 }
 
+constexpr uint64_t PriceScaleDivisor() noexcept {
+    uint64_t d = 1;
+    for (uint32_t i = 0; i < kPriceShift; ++i) {
+        d *= 10;
+    }
+    return d;
+}
+
+double PriceFromScaled(uint64_t scaled) noexcept {
+    return static_cast<double>(scaled) / static_cast<double>(PriceScaleDivisor());
+}
+
 }  // namespace
 
 int RunExecutor() {
@@ -80,8 +92,9 @@ int RunExecutor() {
                     latency_ns = now_steady_ns - order.steady_nanoseconds;
                 }
                 HOT_INFO << SymbolLabel(order.symbol) << " "
-                         << (order.type == Order::Type::kBuy ? "BUY" : "SELL") << " price=" << order.price
-                         << " qty=" << order.quantity << " latency_ns=" << latency_ns << Endl;
+                         << (order.type == Order::Type::kBuy ? "BUY" : "SELL")
+                         << " price=" << PriceFromScaled(order.price) << " qty=" << order.quantity
+                         << " latency_ns=" << latency_ns << Endl;
             } else if (result == ReadResult::kConsumerIsDisabled) {
                 HOT_ERROR << "Consumer " << std::to_underlying(id) << " is disabled" << Endl;
                 return 1;
