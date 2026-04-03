@@ -42,3 +42,12 @@
     nocompress
     notifempty
 }
+
+/var/log/hft/latency_percentiles.csv {
+    size 4k
+    rotate 3
+    create 644 hft-user hft-group
+    copytruncate
+    nocompress
+    notifempty
+}

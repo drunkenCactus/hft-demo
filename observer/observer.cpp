@@ -1,3 +1,4 @@
+#include <lib/common.hpp>
 #include <lib/interprocess/interprocess.hpp>
 #include <lib/interprocess/ipc_params.hpp>
 #include <lib/logger.hpp>
@@ -5,6 +6,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <thread>
 #include <vector>
@@ -15,6 +17,7 @@ namespace {
 
 const std::string kLogfilesDir = "/var/log/hft/";
 const std::string kObserverLogfilePath = kLogfilesDir + "observer.log";
+const std::string kLatencyCsvPath = kLogfilesDir + "latency_percentiles.csv";
 
 constexpr uint32_t kReconnectTimeoutSeconds = 1;
 constexpr uint32_t kLivenessThresholdSeconds = 5;
@@ -76,7 +79,7 @@ int ProcessLogAttempt(const char* const shm_name, std::ofstream& logfile) {
     return 0;
 }
 
-int ProcessLatencyAggregationAttempt() {
+int ProcessLatencyAggregationAttempt(std::ofstream& latency_csv) {
     std::unique_ptr<ShmLatency> shm = nullptr;
     while (shm == nullptr) {
         try {
@@ -90,7 +93,7 @@ int ProcessLatencyAggregationAttempt() {
         }
     }
     auto [ring_buffer] = shm->GetObjects();
-    LOG_INFO << "Start latency aggregation (" << kLatencyBatchSize << " samples per batch)" << Endl;
+    LOG_INFO << "Start latency aggregation (" << kLatencyBatchSize << " samples per batch) -> " << kLatencyCsvPath << Endl;
 
     std::vector<uint64_t> batch;
     batch.reserve(kLatencyBatchSize);
@@ -112,18 +115,34 @@ int ProcessLatencyAggregationAttempt() {
         }
 
         std::sort(batch.begin(), batch.end());
-        LOG_INFO << "latency_ns samples=" << kLatencyBatchSize
-                 << " p50=" << PercentileFromSorted(batch, 50)
-                 << " p90=" << PercentileFromSorted(batch, 90)
-                 << " p95=" << PercentileFromSorted(batch, 95)
-                 << " p99=" << PercentileFromSorted(batch, 99) << Endl;
+        const uint64_t p50 = PercentileFromSorted(batch, 50);
+        const uint64_t p90 = PercentileFromSorted(batch, 90);
+        const uint64_t p95 = PercentileFromSorted(batch, 95);
+        const uint64_t p99 = PercentileFromSorted(batch, 99);
+
+        std::error_code ec;
+        std::uintmax_t file_size = std::filesystem::file_size(kLatencyCsvPath, ec);
+        if (!ec && file_size == 0) {
+            latency_csv << "utc_s,samples,p50_ns,p90_ns,p95_ns,p99_ns" << std::endl;
+        }
+
+        latency_csv << NowSeconds() << ',' << kLatencyBatchSize << ',' << p50 << ',' << p90 << ',' << p95 << ',' << p99 << std::endl;
+
         batch.clear();
     }
 }
 
 void ProcessLatencyAggregation() {
+    std::ofstream latency_csv;
+    latency_csv.open(kLatencyCsvPath, std::ios::app);
+    if (!latency_csv.is_open()) {
+        LOG_ERROR << "Cannot open latency CSV " << kLatencyCsvPath << Endl;
+        std::exit(1);
+    }
+
     while (true) {
-        if (ProcessLatencyAggregationAttempt() != 0) {
+        if (ProcessLatencyAggregationAttempt(latency_csv) != 0) {
+            latency_csv.close();
             std::exit(1);
         }
         std::this_thread::sleep_for(std::chrono::seconds(kReconnectTimeoutSeconds));
