@@ -12,6 +12,7 @@ namespace {
 std::once_flag g_once;
 std::string g_feeder_observer_shm;
 std::string g_executor_observer_shm;
+std::string g_latency_shm;
 ArrayByTraderId<TraderConfig> g_trader_configs;
 
 void RequireEnv(const char* env_name, std::string& out) {
@@ -34,6 +35,7 @@ std::string EnvNameIndexed(const char* prefix, std::size_t index) {
 void LoadAll() {
     RequireEnv("HFT_IPC_SHM_FEEDER_TO_OBSERVER", g_feeder_observer_shm);
     RequireEnv("HFT_IPC_SHM_EXECUTOR_TO_OBSERVER", g_executor_observer_shm);
+    RequireEnv("HFT_IPC_SHM_LATENCY", g_latency_shm);
     for (TraderId id : kTraderIds) {
         const std::size_t idx = std::to_underlying(id);
         RequireEnv(EnvNameIndexed("HFT_IPC_SHM_MARKET_DATA_", idx).c_str(), g_trader_configs[id].market_data_shm);
@@ -72,6 +74,11 @@ const char* IpcFeederToObserverShmName() {
 const char* IpcExecutorToObserverShmName() {
     EnsureIpcParamsLoaded();
     return g_executor_observer_shm.c_str();
+}
+
+const char* IpcLatencyShmName() {
+    EnsureIpcParamsLoaded();
+    return g_latency_shm.c_str();
 }
 
 const TraderConfig& GetTraderConfig(TraderId id) {

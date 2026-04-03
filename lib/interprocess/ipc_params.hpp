@@ -19,6 +19,8 @@ const char* IpcFeederToObserverShmName();
 
 const char* IpcExecutorToObserverShmName();
 
+const char* IpcLatencyShmName();
+
 const TraderConfig& GetTraderConfig(TraderId id);
 
 }  // namespace hft

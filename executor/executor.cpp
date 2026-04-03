@@ -56,6 +56,19 @@ int RunExecutor() {
     HotPathLogger::Init(ring_buffer_log);
     HOT_INFO << "Executor started!" << Endl;
 
+    std::unique_ptr<ShmLatency> shm_latency = nullptr;
+    try {
+        RemoveSharedMemory(IpcLatencyShmName());
+        shm_latency = std::make_unique<ShmLatency>(IpcLatencyShmName(), MemoryRole::kCreateOnly);
+        shm_latency->UpdateHeartbeat();
+    } catch (const std::exception& e) {
+        HOT_ERROR << "Failed to create latency shm: " << IpcLatencyShmName() << ": " << e.what() << Endl;
+        return 1;
+    }
+    HOT_INFO << "Latency shm created: " << IpcLatencyShmName() << Endl;
+
+    auto [ring_buffer_latency] = shm_latency->GetObjects();
+
     ArrayByTraderId<std::unique_ptr<ShmOrder>> shm_order{};
     ArrayByTraderId<OrderRingBuffer*> rb_order{};
 
@@ -79,6 +92,7 @@ int RunExecutor() {
     Order order;
     while (true) {
         shm_log->UpdateHeartbeat();
+        shm_latency->UpdateHeartbeat();
         for (TraderId id : kTraderIds) {
             if (!shm_order[id]->IsProducerAlive(kLivenessThresholdSeconds)) {
                 HOT_ERROR << "Producer " << std::to_underlying(id) << " is dead" << Endl;
@@ -95,6 +109,9 @@ int RunExecutor() {
                          << (order.type == Order::Type::kBuy ? "BUY" : "SELL")
                          << " price=" << PriceFromScaled(order.price) << " qty=" << order.quantity
                          << " latency_ns=" << latency_ns << Endl;
+                LatencyNsSample sample;
+                sample.value = latency_ns;
+                ring_buffer_latency->Write(sample);
             } else if (result == ReadResult::kConsumerIsDisabled) {
                 HOT_ERROR << "Consumer " << std::to_underlying(id) << " is disabled" << Endl;
                 return 1;

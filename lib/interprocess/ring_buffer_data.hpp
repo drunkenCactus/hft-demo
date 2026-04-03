@@ -87,4 +87,9 @@ struct alignas(Alignment) ObserverData_ {
     char message[message_size];
 };
 
+template <uint32_t Alignment>
+struct alignas(Alignment) LatencyNsSample_ {
+    uint64_t value = 0;
+};
+
 }  // namespace hft
