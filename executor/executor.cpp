@@ -9,7 +9,6 @@
 #include <cstdint>
 #include <memory>
 #include <thread>
-#include <tuple>
 
 namespace hft {
 

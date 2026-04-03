@@ -7,7 +7,6 @@
 #include <cstdlib>
 #include <fstream>
 #include <thread>
-#include <tuple>
 #include <vector>
 
 namespace hft {
