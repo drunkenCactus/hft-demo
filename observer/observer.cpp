@@ -2,9 +2,12 @@
 #include <lib/interprocess/ipc_params.hpp>
 #include <lib/logger.hpp>
 
+#include <algorithm>
+#include <chrono>
 #include <cstdlib>
 #include <fstream>
 #include <thread>
+#include <tuple>
 #include <vector>
 
 namespace hft {
@@ -16,6 +19,16 @@ const std::string kObserverLogfilePath = kLogfilesDir + "observer.log";
 
 constexpr uint32_t kReconnectTimeoutSeconds = 1;
 constexpr uint32_t kLivenessThresholdSeconds = 5;
+
+constexpr std::size_t kLatencyBatchSize = 1000;
+
+uint64_t PercentileFromSorted(const std::vector<uint64_t>& sorted, uint32_t perc) noexcept {
+    if (sorted.size() == 0) {
+        return 0;
+    }
+    std::size_t idx = (sorted.size() - 1) * perc / 100;
+    return sorted[idx];
+}
 
 constexpr const char* GetTraderLogfilePath(TraderId id) noexcept {
     switch (id) {
@@ -64,6 +77,61 @@ int ProcessLogAttempt(const char* const shm_name, std::ofstream& logfile) {
     return 0;
 }
 
+int ProcessLatencyAggregationAttempt() {
+    std::unique_ptr<ShmLatency> shm = nullptr;
+    while (shm == nullptr) {
+        try {
+            shm = std::make_unique<ShmLatency>(IpcLatencyShmName(), MemoryRole::kOpenOnly);
+        } catch (const ShmVersionConflict& e) {
+            LOG_ERROR << e.what() << Endl;
+            return 1;
+        } catch (const std::exception& e) {
+            LOG_WARNING << "Failed to open latency shm: " << e.what() << Endl;
+            std::this_thread::sleep_for(std::chrono::seconds(kReconnectTimeoutSeconds));
+        }
+    }
+    auto [ring_buffer] = shm->GetObjects();
+    LOG_INFO << "Start latency aggregation (" << kLatencyBatchSize << " samples per batch)" << Endl;
+
+    std::vector<uint64_t> batch;
+    batch.reserve(kLatencyBatchSize);
+
+    while (true) {
+        while (batch.size() < kLatencyBatchSize) {
+            LatencyNsSample sample;
+            ReadResult result = ring_buffer->Read(sample);
+            if (result == ReadResult::kSuccess) {
+                batch.push_back(sample.value);
+            } else if (result == ReadResult::kConsumerIsDisabled) {
+                LOG_WARNING << "Latency consumer is disabled; reset and drop partial batch" << Endl;
+                batch.clear();
+                ring_buffer->ResetConsumer();
+            } else if (!shm->IsProducerAlive(kLivenessThresholdSeconds)) {
+                LOG_WARNING << "Latency producer is dead" << Endl;
+                return 0;
+            }
+        }
+
+        std::sort(batch.begin(), batch.end());
+        LOG_INFO << "latency_ns samples=" << kLatencyBatchSize
+                 << " p50=" << PercentileFromSorted(batch, 50)
+                 << " p90=" << PercentileFromSorted(batch, 90)
+                 << " p95=" << PercentileFromSorted(batch, 95)
+                 << " p99=" << PercentileFromSorted(batch, 99) << Endl;
+        batch.clear();
+    }
+}
+
+void ProcessLatencyAggregation() {
+    while (true) {
+        if (ProcessLatencyAggregationAttempt() != 0) {
+            std::exit(1);
+        }
+        std::this_thread::sleep_for(std::chrono::seconds(kReconnectTimeoutSeconds));
+        LOG_WARNING << "Restarting latency aggregation" << Endl;
+    }
+}
+
 void ProcessLog(const char* const shm_name, const std::string& logfile_path) {
     std::ofstream logfile;
     logfile.open(logfile_path, std::ios::app);
@@ -97,10 +165,12 @@ void RunObserver() {
     }
 
     std::vector<std::thread> threads;
-    threads.reserve(log_routes.size());
+    threads.reserve(log_routes.size() + 1);
     for (const auto& [shm_name, logfile_path] : log_routes) {
         threads.emplace_back(ProcessLog, shm_name.c_str(), logfile_path);
     }
+    threads.emplace_back(ProcessLatencyAggregation);
+
     for (auto& thread : threads) {
         thread.join();
     }

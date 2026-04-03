@@ -69,4 +69,17 @@ using ShmToObserver = SharedMemory<
     ObserverRingBuffer
 >;
 
+using LatencyNsSample = LatencyNsSample_<kCacheLineSize>;
+
+using LatencyRingBuffer = SpscRingBuffer<
+    LatencyNsSample,
+    kCacheLineSize,
+    16384 /*BufferLength*/
+>;
+
+using ShmLatency = SharedMemory<
+    kCacheLineSize,
+    LatencyRingBuffer
+>;
+
 }  // namespace hft
