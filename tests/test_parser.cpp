@@ -66,6 +66,74 @@ TEST(Parser, ParseDepthEvent_Success_InvokesCallbackForEachBidAndAsk) {
     EXPECT_EQ(updates[3].type, OrderBookUpdate::Type::kAsk);
     EXPECT_EQ(updates[3].price, 270000ULL);
     EXPECT_EQ(updates[3].quantity, 200ULL * kQuantityScale);
+
+    EXPECT_TRUE(updates[0].has_more);
+    EXPECT_TRUE(updates[1].has_more);
+    EXPECT_TRUE(updates[2].has_more);
+    EXPECT_FALSE(updates[3].has_more);
+}
+
+TEST(Parser, ParseDepthEvent_HasMore_LastBidTrueWhenAsksFollow) {
+    const std::string json = R"({
+        "e": "depthUpdate",
+        "E": 1,
+        "s": "BTCUSDT",
+        "U": 1,
+        "u": 2,
+        "b": [["1.0", "1"]],
+        "a": [["2.0", "2"]]
+    })";
+
+    std::vector<OrderBookUpdate> updates;
+    ASSERT_TRUE(ParseDepthEvent(json, [&updates](const OrderBookUpdate& u) {
+        updates.push_back(u);
+    }));
+    ASSERT_EQ(updates.size(), 2u);
+    EXPECT_EQ(updates[0].type, OrderBookUpdate::Type::kBid);
+    EXPECT_TRUE(updates[0].has_more);
+    EXPECT_EQ(updates[1].type, OrderBookUpdate::Type::kAsk);
+    EXPECT_FALSE(updates[1].has_more);
+}
+
+TEST(Parser, ParseDepthEvent_HasMore_TwoBidsNoAsks) {
+    const std::string json = R"({
+        "e": "depthUpdate",
+        "E": 1,
+        "s": "BTCUSDT",
+        "U": 1,
+        "u": 2,
+        "b": [["1.0", "1"], ["1.1", "2"]],
+        "a": []
+    })";
+
+    std::vector<OrderBookUpdate> updates;
+    ASSERT_TRUE(ParseDepthEvent(json, [&updates](const OrderBookUpdate& u) {
+        updates.push_back(u);
+    }));
+    ASSERT_EQ(updates.size(), 2u);
+    EXPECT_TRUE(updates[0].has_more);
+    EXPECT_FALSE(updates[1].has_more);
+}
+
+TEST(Parser, ParseDepthEvent_HasMore_OnlyAsksNoBids) {
+    const std::string json = R"({
+        "e": "depthUpdate",
+        "E": 1,
+        "s": "BTCUSDT",
+        "U": 1,
+        "u": 2,
+        "a": [["2.0", "2"], ["2.1", "3"]]
+    })";
+
+    std::vector<OrderBookUpdate> updates;
+    ASSERT_TRUE(ParseDepthEvent(json, [&updates](const OrderBookUpdate& u) {
+        updates.push_back(u);
+    }));
+    ASSERT_EQ(updates.size(), 2u);
+    EXPECT_EQ(updates[0].type, OrderBookUpdate::Type::kAsk);
+    EXPECT_TRUE(updates[0].has_more);
+    EXPECT_EQ(updates[1].type, OrderBookUpdate::Type::kAsk);
+    EXPECT_FALSE(updates[1].has_more);
 }
 
 TEST(Parser, ParseDepthEvent_Success_EventTimeMilliseconds_AutoConverted) {
@@ -87,6 +155,7 @@ TEST(Parser, ParseDepthEvent_Success_EventTimeMilliseconds_AutoConverted) {
     ASSERT_TRUE(ok);
     EXPECT_EQ(captured.event_timestamp_microseconds, 1672515782136000u);
     EXPECT_EQ(captured.symbol, Symbol::kEthUsdt);
+    EXPECT_FALSE(captured.has_more);
 }
 
 TEST(Parser, ParseDepthEvent_Success_EventTimeMicroseconds_UsedAsIs) {
@@ -108,6 +177,7 @@ TEST(Parser, ParseDepthEvent_Success_EventTimeMicroseconds_UsedAsIs) {
     ASSERT_TRUE(ok);
     EXPECT_EQ(captured.event_timestamp_microseconds, 1672515782136123u);
     EXPECT_EQ(captured.symbol, Symbol::kEthUsdt);
+    EXPECT_FALSE(captured.has_more);
 }
 
 TEST(Parser, ParseDepthEvent_Success_EmptyBidsAndAsks_ReturnsTrue) {
@@ -148,6 +218,7 @@ TEST(Parser, ParseDepthEvent_Success_UnknownSymbol) {
 
     ASSERT_TRUE(ok);
     EXPECT_EQ(captured.symbol, Symbol::kUnknown);
+    EXPECT_FALSE(captured.has_more);
 }
 
 TEST(Parser, ParseDepthEvent_Failure_InvalidJson) {

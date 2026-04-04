@@ -220,23 +220,29 @@ bool ParseDepthEvent(
     out.symbol = symbol;
 
     const auto b = value.FindMember("b");
-    if (b != value.MemberEnd() && b->value.IsArray()) {
+    const auto a = value.FindMember("a");
+
+    const bool has_bids = b != value.MemberEnd() && b->value.IsArray() && b->value.Size() > 0;
+    const bool has_asks = a != value.MemberEnd() && a->value.IsArray() && a->value.Size() > 0;
+
+    if (has_bids) {
         out.type = OrderBookUpdate::Type::kBid;
         for (rapidjson::SizeType i = 0; i < b->value.Size(); ++i) {
             if (!ParsePriceQuantity(b->value[i], out.price, out.quantity)) {
                 break;
             }
+            out.has_more = has_asks || (i < b->value.Size() - 1);
             callback(out);
         }
     }
 
-    const auto a = value.FindMember("a");
-    if (a != value.MemberEnd() && a->value.IsArray()) {
+    if (has_asks) {
         out.type = OrderBookUpdate::Type::kAsk;
         for (rapidjson::SizeType i = 0; i < a->value.Size(); ++i) {
             if (!ParsePriceQuantity(a->value[i], out.price, out.quantity)) {
                 break;
             }
+            out.has_more = i < a->value.Size() - 1;
             callback(out);
         }
     }
