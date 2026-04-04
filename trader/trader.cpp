@@ -49,30 +49,20 @@ public:
     template <typename OnReadSteadyNs>
     [[nodiscard]] bool ProcessUpdate(OnReadSteadyNs&& on_read_steady_ns) {
         OrderBookUpdate update;
-        ReadResult result = buffer_->Read(update);
-        if (result == ReadResult::kSuccess) {
-            std::forward<OnReadSteadyNs>(on_read_steady_ns)(update.steady_nanoseconds);
-            if (update.first_update_id > order_book_.LastUpdateId() + 1) {
-                // order_book is corrupted
-                HOT_WARNING << "Order book snapshot is corrupted" << Endl;
-                if (!ResetSnapshot()) {
+        do {
+            ReadResult result = buffer_->Read(update);
+            if (result == ReadResult::kSuccess) {
+                std::forward<OnReadSteadyNs>(on_read_steady_ns)(update.steady_nanoseconds);
+                if (!ApplyUpdate(update)) {
                     return false;
                 }
-            } else if (update.last_update_id < order_book_.LastUpdateId()) {
-                // event is too old
-                HOT_WARNING << "Order book update is too old. Skip it" << Endl;
+            } else if (result == ReadResult::kConsumerIsDisabled) {
+                HOT_ERROR << "Consumer for order book updates is disabled" << Endl;
+                return false;
             } else {
-                // update local order book
-                if (update.type == OrderBookUpdate::Type::kBid) {
-                    order_book_.UpdateBid(update.last_update_id, update.price, update.quantity);
-                } else {
-                    order_book_.UpdateAsk(update.last_update_id, update.price, update.quantity);
-                }
+                break;
             }
-        } else if (result == ReadResult::kConsumerIsDisabled) {
-            HOT_ERROR << "Consumer for order book updates is disabled" << Endl;
-            return false;
-        }
+        } while (update.has_more);
         return true;
     }
 
@@ -81,6 +71,27 @@ public:
     }
 
 private:
+    [[nodiscard]] bool ApplyUpdate(const OrderBookUpdate& update) {
+        if (update.first_update_id > order_book_.LastUpdateId() + 1) {
+            // order_book is corrupted
+            HOT_WARNING << "Order book snapshot is corrupted" << Endl;
+            if (!ResetSnapshot()) {
+                return false;
+            }
+        } else if (update.last_update_id < order_book_.LastUpdateId()) {
+            // event is too old
+            HOT_WARNING << "Order book update is too old. Skip it" << Endl;
+        } else {
+            // update local order book
+            if (update.type == OrderBookUpdate::Type::kBid) {
+                order_book_.UpdateBid(update.last_update_id, update.price, update.quantity);
+            } else {
+                order_book_.UpdateAsk(update.last_update_id, update.price, update.quantity);
+            }
+        }
+        return true;
+    }
+
     [[nodiscard]] bool ResetSnapshot() {
         std::string_view response = binance_api_client_.GetOrderBookSnapshot();
         if (!ParseOrderBookSnapshot(

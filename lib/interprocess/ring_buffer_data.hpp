@@ -45,6 +45,7 @@ struct alignas(Alignment) OrderBookUpdate_ {
     uint64_t quantity = 0;
     Type type = Type::kBid;
     Symbol symbol = Symbol::kUnknown;
+    bool has_more = false;
 };
 
 template <uint32_t Alignment>
