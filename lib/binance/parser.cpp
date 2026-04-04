@@ -236,7 +236,7 @@ bool ParseDepthEvent(
         }
     }
 
-    if (a != value.MemberEnd() && a->value.IsArray()) {
+    if (has_asks) {
         out.type = OrderBookUpdate::Type::kAsk;
         for (rapidjson::SizeType i = 0; i < a->value.Size(); ++i) {
             if (!ParsePriceQuantity(a->value[i], out.price, out.quantity)) {
