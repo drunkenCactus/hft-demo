@@ -37,9 +37,6 @@
 *.out
 *.app
 
-# Images
-*.png
-
 # debug information files
 *.dwo
 
@@ -50,4 +47,5 @@
 # tmp dirs
 .build
 .cache
+.tmp
 __pycache__
