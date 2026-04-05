@@ -1,6 +1,6 @@
 # HFT-style trading demo
 
-A multi-process demo of an HFT-style trading stack: it streams live Binance market data, maintains in-memory order books, runs naive per-symbol strategy logic, and routes orders through a dedicated executor. Processes communicate via POSIX shared memory (SHM) and lock-free single-producer/single-consumer (SPSC) ring buffers. The design targets low-latency practice: cache-friendly shared layouts, no allocations or disk I/O on the hot path, and tick-to-trade latency measurement using monotonic timestamps.
+A multi-process demo of an HFT-style trading stack: it streams live Binance market data, maintains in-memory order books, runs naive per-symbol strategy logic, and routes orders through a dedicated executor. Processes communicate via POSIX shared memory (SHM) and lock-free single-producer/single-consumer (SPSC) ring buffers. The design targets low-latency practice: cache-friendly shared layouts, no allocations or disk I/O on the hot path, and tick-to-trade–style latency (demo stack; excludes network RTT to the live exchange) measured with monotonic timestamps.
 
 This is a learning project, not production trading software.
 
@@ -8,13 +8,13 @@ This is a learning project, not production trading software.
 
 ## Architecture
 
-![architecture](docs/architecture.png)
+![architecture](img/architecture.png)
 
 | Process | Role |
 |--------|------|
-| feeder | Connects to Binance combined streams (depth + trades) via WebSocket (`stream.binance.com`), parses JSON, publishes order-book deltas and trades into per-symbol SPSC rings in SHM. |
+| feeder | Input gateway. Connects to Binance combined streams (depth + trades) via WebSocket (`stream.binance.com`), parses JSON, publishes order-book deltas and trades into per-symbol SPSC rings in SHM. |
 | trader | One process per symbol (`trader_btcusdt`, `trader_ethusdt`), all using the same configurable binary. Fetches an order-book snapshot via the Binance REST API when the local book must be reset (gap/corruption). Reads depth updates and trades from the feeder, maintains a local order book, and applies a trade-flow window. Implements a naive rule: buy at the best ask when the top-five levels are bid-skewed (~>55% of bid+ask size) and aggressive buys lead the flow window; sell at the best bid under the mirror skew; skip if a new order matches the previous one. Emits orders into an SPSC ring toward the executor. |
-| executor | Consumes orders from both traders, simulates exchange acceptance (no live REST order placement), logs structured hot-path output, and pushes latency samples (steady-clock delta) to a dedicated SHM ring for the observer. |
+| executor | Output gateway. Consumes orders from both traders, simulates exchange acceptance (no live REST order placement), logs structured hot-path output, and pushes latency samples (steady-clock delta) to a dedicated SHM ring for the observer. |
 | observer | Drains hot-path log rings from feeder, traders, and executor into plain log files; aggregates latency samples into rolling batches, writes CSV percentiles, and uses logrotate-friendly behaviour (append + truncate recovery). |
 
 All processes require `HFT_IPC_SHM_*` variables (see `conf/ipc.env`). systemd units load them via `EnvironmentFile=/opt/hft/conf/ipc.env`. Versioned IPC layouts live under `lib/interprocess/`; bump `IPC_VERSION` in `interprocess_meta.hpp` when those layouts change.
@@ -43,12 +43,7 @@ All processes require `HFT_IPC_SHM_*` variables (see `conf/ipc.env`). systemd un
 - Boost ≥ 1.90 (Boost.Thread; OpenSSL for TLS: `ssl`, `crypto`)  
 - Python 3 (optional): `scripts/plot_latency_percentiles.py` + `scripts/requirements.txt`
 
-Fetched automatically via CMake `FetchContent` (no separate install; clones on first configure into the build tree):
-
-| Dependency | Role | Source |
-|------------|------|--------|
-| RapidJSON | Header-only JSON; Binance stream parsing | [Tencent/rapidjson](https://github.com/Tencent/rapidjson), pinned commit `24b5e7a8b27f42fa16b96fc70aade9106cf7102f` |
-| GoogleTest | Unit tests (`run_tests` target); GMock disabled | [google/googletest](https://github.com/google/googletest) v1.17.0 |
+RapidJSON and GoogleTest are fetched automatically via CMake `FetchContent` (no separate install; cloned on the first configure into the build tree):
 
 ### Build & run tests
 
