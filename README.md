@@ -13,11 +13,9 @@ This is a learning project, not production trading software.
 | Process | Role |
 |--------|------|
 | feeder | Input gateway. Connects to Binance combined streams (depth + trades) via WebSocket (`stream.binance.com`), parses JSON, publishes order-book deltas and trades into per-symbol SPSC rings in SHM. |
-| trader | One process per symbol (`trader_btcusdt`, `trader_ethusdt`), all using the same configurable binary. Fetches an order-book snapshot via the Binance REST API when the local book must be reset (gap/corruption). Reads depth updates and trades from the feeder, maintains a local order book, and applies a trade-flow window. Implements a naive rule: buy at the best ask when the top-five levels are bid-skewed (~>55% of bid+ask size) and aggressive buys lead the flow window; sell at the best bid under the mirror skew; skip if a new order matches the previous one. Emits orders into an SPSC ring toward the executor. |
+| trader | Implements trading logic. One process per symbol (`trader_btcusdt`, `trader_ethusdt`), all using the same configurable binary. Fetches an order-book snapshot via the Binance REST API when the local book must be reset (gap/corruption). Reads depth updates and trades from the feeder, maintains a local order book, and applies a trade-flow window. Implements a naive rule: buy at the best ask when the top-five levels are bid-skewed (~>55% of bid+ask size) and aggressive buys lead the flow window; sell at the best bid under the mirror skew; skip if a new order matches the previous one. Emits orders into an SPSC ring toward the executor. |
 | executor | Output gateway. Consumes orders from both traders, simulates exchange acceptance (no live REST order placement), logs structured hot-path output, and pushes latency samples (steady-clock delta) to a dedicated SHM ring for the observer. |
-| observer | Drains hot-path log rings from feeder, traders, and executor into plain log files; aggregates latency samples into rolling batches, writes CSV percentiles, and uses logrotate-friendly behaviour (append + truncate recovery). |
-
-All processes require `HFT_IPC_SHM_*` variables (see `conf/ipc.env`). systemd units load them via `EnvironmentFile=/opt/hft/conf/ipc.env`. Versioned IPC layouts live under `lib/interprocess/`; bump `IPC_VERSION` in `interprocess_meta.hpp` when those layouts change.
+| observer | Sidecar used for cold-path operations. Drains hot-path log rings from feeder, traders, and executor into plain log files; aggregates latency samples into rolling batches, writes CSV percentiles, and uses logrotate-friendly behaviour (append + truncate recovery). |
 
 ---
 
@@ -27,7 +25,7 @@ All processes require `HFT_IPC_SHM_*` variables (see `conf/ipc.env`). systemd un
 |------|-----------|--------|
 | Shared memory | `lib/interprocess/shared_memory.hpp` | Thin wrapper over `boost::interprocess::shared_memory_object` plus `mapped_region`. Creates or maps templated objects in the shared segment. Uses a magic + version header so all processes agree on layout. Supports producer liveness checks via a heartbeat. |
 | SPSC ring buffer | `lib/interprocess/spsc_ring_buffer.hpp` | Single-producer, single-consumer ring buffer with a cache-line–aware layout. Can disable or reset a lagging consumer to avoid overflow and corrupted reads. |
-| Binance protocol | `lib/binance/` | WebSocket client, REST client, and JSON parser for Binance stream messages. |
+| Binance protocol | `lib/binance/*` | WebSocket client, REST client, and JSON parser for Binance stream messages. |
 | Local order book | `lib/local_order_book.hpp` | Incremental depth application + snapshot recovery hooks. Uses `last_update_id` to maintain consistency. Exposes the top-N bid/ask levels. |
 | Trade statistics | `lib/trade_flow_window.*` | Windowed flow metrics (cumulative aggressive buy/sell volume) that feed strategy decisions. |
 | Hot-path logging | `lib/interprocess/hot_path_logger.*` | Non-allocating formatting path into SHM ring for observer-side draining. |
@@ -63,11 +61,11 @@ Builds binaries (`.build/feeder`, `.build/trader`, `.build/executor`, `.build/ob
 
 | What | Where |
 |------|--------|
-| systemd units | `conf/*.service` |
-| SHM name map | `conf/ipc.env` — copy to `/opt/hft/conf/ipc.env` on the server (or source equivalent vars). |
-| Logrotate | `conf/hft_logrotate` → `/etc/logrotate.d/` (see `build.sh` deploy path). |
-| Application logs | `/var/log/hft/*.log` (feeder, traders, executor, observer). |
-| Latency CSV | `/var/log/hft/latency_percentiles.csv` |
+| systemd units | `/etc/systemd/system/*.service`: copy from `conf/*.service` |
+| logrotate | `/etc/logrotate.d/hft_logrotate`: copy from `conf/hft_logrotate` |
+| env variables | `/opt/hft/conf/ipc.env`: copy from `conf/ipc.env` |
+| application logs | `/var/log/hft/*.log` |
+| latency CSV stats | `/var/log/hft/latency_percentiles.csv` |
 
 ---
 
