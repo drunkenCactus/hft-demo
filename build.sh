@@ -47,6 +47,10 @@ TARGET_LOGROTATE_DIR="/etc/logrotate.d"
 # Configuration files
 SYSTEMD_CONFIGS=("feeder.service" "trader_btcusdt.service" "trader_ethusdt.service" "executor.service" "observer.service")
 LOGROTATE_CONFIG="hft_logrotate"
+HFT_SLICE_UNIT="hft.slice"
+SYSTEM_SLICE_DROPIN_DIR="system.slice.d"
+USER_SLICE_DROPIN_DIR="user.slice.d"
+NON_HFT_CPUS_CONF="non-hft-cpus.conf"
 
 # ============================================
 # FUNCTIONS
@@ -117,6 +121,29 @@ copy_configs() {
             log_warn "Systemd config for $systemd_config not found: $CONFIG_DIR/$systemd_config"
             exit 1
         fi
+    done
+
+    if [[ -f "$CONFIG_DIR/$HFT_SLICE_UNIT" ]]; then
+        cp "$CONFIG_DIR/$HFT_SLICE_UNIT" "$TARGET_SYSTEMD_DIR/$HFT_SLICE_UNIT"
+        chmod 644 "$TARGET_SYSTEMD_DIR/$HFT_SLICE_UNIT"
+        chown root:root "$TARGET_SYSTEMD_DIR/$HFT_SLICE_UNIT"
+        log_info "  → $HFT_SLICE_UNIT copied"
+    else
+        log_warn "$HFT_SLICE_UNIT not found: $CONFIG_DIR/$HFT_SLICE_UNIT"
+        exit 1
+    fi
+
+    if [[ ! -f "$CONFIG_DIR/$NON_HFT_CPUS_CONF" ]]; then
+        log_warn "non-hft CPUs drop-in not found: $CONFIG_DIR/$NON_HFT_CPUS_CONF"
+        exit 1
+    fi
+    for non_hft_slice_d in "$SYSTEM_SLICE_DROPIN_DIR" "$USER_SLICE_DROPIN_DIR"; do
+        mkdir -p "$TARGET_SYSTEMD_DIR/$non_hft_slice_d"
+        cp "$CONFIG_DIR/$NON_HFT_CPUS_CONF" \
+            "$TARGET_SYSTEMD_DIR/$non_hft_slice_d/$NON_HFT_CPUS_CONF"
+        chmod 644 "$TARGET_SYSTEMD_DIR/$non_hft_slice_d/$NON_HFT_CPUS_CONF"
+        chown root:root "$TARGET_SYSTEMD_DIR/$non_hft_slice_d/$NON_HFT_CPUS_CONF"
+        log_info "  → $non_hft_slice_d/$NON_HFT_CPUS_CONF copied"
     done
 
     if [[ -f "$CONFIG_DIR/$LOGROTATE_CONFIG" ]]; then
