@@ -1,0 +1,6 @@
+[Unit]
+Description=HFT hot-path reserved CPUs
+Before=slices.target
+
+[Slice]
+AllowedCPUs=4-7 20-23

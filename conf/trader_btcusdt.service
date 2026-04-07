@@ -16,6 +16,8 @@ StandardError=journal
 SyslogIdentifier=hft-trader-btcusdt
 LimitCORE=infinity
 LimitMEMLOCK=infinity
+Slice=hft.slice
+CPUAffinity=5
 
 [Install]
 WantedBy=multi-user.target
