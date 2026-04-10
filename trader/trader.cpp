@@ -1,5 +1,6 @@
 #include <lib/binance/binance_api_client.hpp>
 #include <lib/binance/parser.hpp>
+#include <lib/common.hpp>
 #include <lib/interprocess/hot_path_logger.hpp>
 #include <lib/interprocess/interprocess.hpp>
 #include <lib/interprocess/ipc_params.hpp>
@@ -8,7 +9,6 @@
 #include <algorithm>
 #include <span>
 #include <thread>
-#include <utility>
 
 namespace hft {
 
@@ -39,20 +39,40 @@ constexpr Symbol SymbolForTrader(TraderId id) noexcept {
     }
 }
 
+class TimestampHandler {
+public:
+    void Update(uint64_t update_feeder_read_steady_ns, uint64_t update_feeder_write_steady_ns) {
+        feeder_read_steady_ns = std::max(feeder_read_steady_ns, update_feeder_read_steady_ns);
+        feeder_write_steady_ns = std::max(feeder_write_steady_ns, update_feeder_write_steady_ns);
+        trader_read_steady_ns = SteadyNanoseconds();
+    }
+
+    void SetToOrder(Order& order) const {
+        order.feeder_read_steady_ns = feeder_read_steady_ns;
+        order.feeder_write_steady_ns = feeder_write_steady_ns;
+        order.trader_read_steady_ns = trader_read_steady_ns;
+    }
+
+private:
+    uint64_t feeder_read_steady_ns = 0;
+    uint64_t feeder_write_steady_ns = 0;
+    uint64_t trader_read_steady_ns = 0;
+};
+
 class OrderBookProcessor {
 public:
-    OrderBookProcessor(OrderBookUpdateRingBuffer* buffer, std::string_view exchange_symbol)
+    OrderBookProcessor(OrderBookUpdateRingBuffer* buffer, std::string_view exchange_symbol, TimestampHandler& timestamp_handler)
         : buffer_(buffer)
         , binance_api_client_(exchange_symbol, kOrderBookDepth)
+        , timestamp_handler_(timestamp_handler)
     {}
 
-    template <typename OnReadSteadyNs>
-    [[nodiscard]] bool ProcessUpdate(OnReadSteadyNs&& on_read_steady_ns) {
+    [[nodiscard]] bool ProcessUpdate() {
         OrderBookUpdate update;
         do {
             ReadResult result = buffer_->Read(update);
             if (result == ReadResult::kSuccess) {
-                std::forward<OnReadSteadyNs>(on_read_steady_ns)(update.steady_nanoseconds);
+                timestamp_handler_.Update(update.feeder_read_steady_ns, update.feeder_write_steady_ns);
                 if (!ApplyUpdate(update)) {
                     return false;
                 }
@@ -120,20 +140,21 @@ private:
     OrderBookUpdateRingBuffer* buffer_;
     BinanceApiClient binance_api_client_;
     OrderBook order_book_;
+    TimestampHandler& timestamp_handler_;
 };
 
 class TradeProcessor {
 public:
-    explicit TradeProcessor(TradeRingBuffer* buffer)
+    explicit TradeProcessor(TradeRingBuffer* buffer, TimestampHandler& timestamp_handler)
         : buffer_(buffer)
+        , timestamp_handler_(timestamp_handler)
     {}
 
-    template <typename OnReadSteadyNs>
-    [[nodiscard]] bool ProcessTrade(OnReadSteadyNs&& on_read_steady_ns) noexcept {
+    [[nodiscard]] bool ProcessTrade() noexcept {
         Trade trade;
         ReadResult result = buffer_->Read(trade);
         if (result == ReadResult::kSuccess) {
-            std::forward<OnReadSteadyNs>(on_read_steady_ns)(trade.steady_nanoseconds);
+            timestamp_handler_.Update(trade.feeder_read_steady_ns, trade.feeder_write_steady_ns);
             flow_window_.OnTrade(
                 trade.event_timestamp_microseconds,
                 trade.is_buyer_maker,
@@ -153,6 +174,7 @@ public:
 private:
     TradeRingBuffer* buffer_;
     TradeFlowWindow flow_window_;
+    TimestampHandler& timestamp_handler_;
 };
 
 class OrderProcessor {
@@ -261,22 +283,13 @@ int RunTrader(const TraderId trader_id) {
     HOT_INFO << "Market Data shm opened: " << cfg.market_data_shm.c_str() << Endl;
 
     auto [rb_order_book_updates, rb_trades] = shm_market_data->GetObjects();
-    OrderBookProcessor order_book_processor(rb_order_book_updates, BinanceSymbol(trader_id));
-    TradeProcessor trade_processor(rb_trades);
+    TimestampHandler timestamp_handler;
+    OrderBookProcessor order_book_processor(rb_order_book_updates, BinanceSymbol(trader_id), timestamp_handler);
+    TradeProcessor trade_processor(rb_trades, timestamp_handler);
     OrderProcessor order_processor(order_book_processor.Book(), trade_processor.FlowWindow());
 
     rb_order_book_updates->ResetConsumer();
     rb_trades->ResetConsumer();
-
-    uint64_t last_depth_steady_ns = 0;
-    uint64_t last_trade_steady_ns = 0;
-
-    const auto on_depth_read = [&](uint64_t steady_ns) {
-        last_depth_steady_ns = steady_ns;
-    };
-    const auto on_trade_read = [&](uint64_t steady_ns) {
-        last_trade_steady_ns = steady_ns;
-    };
 
     Order order;
     while (true) {
@@ -286,15 +299,16 @@ int RunTrader(const TraderId trader_id) {
         }
         shm_log->UpdateHeartbeat();
         shm_order->UpdateHeartbeat();
-        if (!order_book_processor.ProcessUpdate(on_depth_read)) {
+        if (!order_book_processor.ProcessUpdate()) {
             return 1;
         }
-        if (!trade_processor.ProcessTrade(on_trade_read)) {
+        if (!trade_processor.ProcessTrade()) {
             return 1;
         }
         if (order_processor.CreateOrder(order)) {
             order.symbol = SymbolForTrader(trader_id);
-            order.steady_nanoseconds = std::max(last_depth_steady_ns, last_trade_steady_ns);
+            timestamp_handler.SetToOrder(order);
+            order.trader_write_steady_ns = SteadyNanoseconds();
             rb_order->Write(order);
         }
     }
