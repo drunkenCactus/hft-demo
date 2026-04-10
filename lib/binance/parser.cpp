@@ -176,8 +176,7 @@ bool ParsePriceQuantity(const rapidjson::Value& arr, uint64_t& price, uint64_t& 
 
 bool ParseDepthEvent(
     const rapidjson::Value& value,
-    uint64_t steady_nanoseconds,
-    std::function<void(const OrderBookUpdate&)> callback
+    std::function<void(OrderBookUpdate&)> callback
 ) noexcept {
     if (!value.IsObject()) {
         return false;
@@ -214,7 +213,6 @@ bool ParseDepthEvent(
 
     OrderBookUpdate out{};
     out.event_timestamp_microseconds = event_ts;
-    out.steady_nanoseconds = steady_nanoseconds;
     out.first_update_id = first_id;
     out.last_update_id = last_id;
     out.symbol = symbol;
@@ -252,8 +250,7 @@ bool ParseDepthEvent(
 
 bool ParseTradeEvent(
     const rapidjson::Value& value,
-    uint64_t steady_nanoseconds,
-    std::function<void(const Trade&)> callback
+    std::function<void(Trade&)> callback
 ) noexcept {
     if (!value.IsObject()) {
         return false;
@@ -265,7 +262,6 @@ bool ParseTradeEvent(
     }
 
     Trade out{};
-    out.steady_nanoseconds = steady_nanoseconds;
 
     const auto E = value.FindMember("E");
     if (E != value.MemberEnd() && E->value.IsNumber()) {
@@ -322,9 +318,8 @@ bool IsTradeStream(std::string_view stream) noexcept {
 
 bool ParseEvent(
     std::string_view json,
-    uint64_t steady_nanoseconds,
-    std::function<void(const OrderBookUpdate&)> order_book_update_callback,
-    std::function<void(const Trade&)> trade_callback
+    std::function<void(OrderBookUpdate&)> order_book_update_callback,
+    std::function<void(Trade&)> trade_callback
 ) noexcept {
     rapidjson::Document doc;
     doc.Parse(json.data(), json.size());
@@ -346,38 +341,36 @@ bool ParseEvent(
     }
 
     if (IsDepthStream(stream)) {
-        return ParseDepthEvent(data_it->value, steady_nanoseconds, std::move(order_book_update_callback));
+        return ParseDepthEvent(data_it->value, std::move(order_book_update_callback));
     }
     if (IsTradeStream(stream)) {
-        return ParseTradeEvent(data_it->value, steady_nanoseconds, std::move(trade_callback));
+        return ParseTradeEvent(data_it->value, std::move(trade_callback));
     }
     return false;
 }
 
 bool ParseDepthEvent(
     std::string_view json,
-    std::function<void(const OrderBookUpdate&)> callback,
-    uint64_t steady_nanoseconds
+    std::function<void(OrderBookUpdate&)> callback
 ) noexcept {
     rapidjson::Document doc;
     doc.Parse(json.data(), json.size());
     if (doc.HasParseError() || !doc.IsObject()) {
         return false;
     }
-    return ParseDepthEvent(doc.GetObject(), steady_nanoseconds, callback);
+    return ParseDepthEvent(doc.GetObject(), callback);
 }
 
 bool ParseTradeEvent(
     std::string_view json,
-    std::function<void(const Trade&)> callback,
-    uint64_t steady_nanoseconds
+    std::function<void(Trade&)> callback
 ) noexcept {
     rapidjson::Document doc;
     doc.Parse(json.data(), json.size());
     if (doc.HasParseError() || !doc.IsObject()) {
         return false;
     }
-    return ParseTradeEvent(doc.GetObject(), steady_nanoseconds, callback);
+    return ParseTradeEvent(doc.GetObject(), callback);
 }
 
 bool ParseOrderBookSnapshot(std::string_view json, std::function<void(const OrderBookSnapshot&)> callback) noexcept {

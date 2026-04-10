@@ -40,6 +40,13 @@ double PriceFromScaled(uint64_t scaled) noexcept {
     return static_cast<double>(scaled) / static_cast<double>(PriceScaleDivisor());
 }
 
+uint64_t MonotonicDeltaNs(uint64_t end_ns, uint64_t begin_ns) noexcept {
+    if (begin_ns == 0 || end_ns < begin_ns) {
+        return 0;
+    }
+    return end_ns - begin_ns;
+}
+
 }  // namespace
 
 int RunExecutor() {
@@ -101,17 +108,18 @@ int RunExecutor() {
             const ReadResult result = rb_order[id]->Read(order);
             if (result == ReadResult::kSuccess) {
                 const uint64_t now_steady_ns = SteadyNanoseconds();
-                uint64_t latency_ns = 0;
-                if (order.steady_nanoseconds != 0 && now_steady_ns >= order.steady_nanoseconds) {
-                    latency_ns = now_steady_ns - order.steady_nanoseconds;
-                }
+                LatencyNsSample sample = {
+                    .delta_total = MonotonicDeltaNs(now_steady_ns, order.feeder_read_steady_ns),
+                    .delta_feeder_ns = MonotonicDeltaNs(order.feeder_write_steady_ns, order.feeder_read_steady_ns),
+                    .delta_md_queue_ns = MonotonicDeltaNs(order.trader_read_steady_ns, order.feeder_write_steady_ns),
+                    .delta_trader_ns = MonotonicDeltaNs(order.trader_write_steady_ns, order.trader_read_steady_ns),
+                    .delta_order_queue_ns = MonotonicDeltaNs(now_steady_ns, order.trader_write_steady_ns),
+                };
+                ring_buffer_latency->Write(sample);
                 HOT_INFO << SymbolLabel(order.symbol) << " "
                          << (order.type == Order::Type::kBuy ? "BUY" : "SELL")
                          << " price=" << PriceFromScaled(order.price) << " qty=" << order.quantity
-                         << " latency_ns=" << latency_ns << Endl;
-                LatencyNsSample sample;
-                sample.value = latency_ns;
-                ring_buffer_latency->Write(sample);
+                         << " latency_ns=" << sample.delta_total << Endl;
             } else if (result == ReadResult::kConsumerIsDisabled) {
                 HOT_ERROR << "Consumer " << std::to_underlying(id) << " is disabled" << Endl;
                 return 1;

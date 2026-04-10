@@ -4,7 +4,6 @@
 #include <lib/interprocess/hot_path_logger.hpp>
 #include <lib/interprocess/interprocess.hpp>
 #include <lib/interprocess/ipc_params.hpp>
-#include <lib/interprocess/ring_buffer_data.hpp>
 
 #include <memory>
 #include <optional>
@@ -62,13 +61,17 @@ int RunFeeder() {
         BinanceWsClient client(kHost, kPort, kTarget);
         HOT_INFO << "Binance websocket connected" << Endl;
 
-        auto order_book_update_callback = [&md_buffers](const OrderBookUpdate& order_book_update) {
+        uint64_t feeder_read_steady_ns = 0;
+        const auto order_book_update_callback = [&md_buffers, &feeder_read_steady_ns](OrderBookUpdate& order_book_update) {
+            order_book_update.feeder_read_steady_ns = feeder_read_steady_ns;
+            order_book_update.feeder_write_steady_ns = SteadyNanoseconds();
             if (const std::optional<TraderId> id = TraderIdForSymbol(order_book_update.symbol); id.has_value()) {
                 md_buffers[id.value()].order_book_updates->Write(order_book_update);
             }
         };
-
-        auto trade_callback = [&md_buffers](const Trade& trade) {
+        const auto trade_callback = [&md_buffers, &feeder_read_steady_ns](Trade& trade) {
+            trade.feeder_read_steady_ns = feeder_read_steady_ns;
+            trade.feeder_write_steady_ns = SteadyNanoseconds();
             if (const std::optional<TraderId> id = TraderIdForSymbol(trade.symbol); id.has_value()) {
                 md_buffers[id.value()].trades->Write(trade);
             }
@@ -81,8 +84,8 @@ int RunFeeder() {
             }
 
             std::string_view message = client.Read();
-            const uint64_t steady_ns = SteadyNanoseconds();
-            if (!ParseEvent(message, steady_ns, order_book_update_callback, trade_callback)) {
+            feeder_read_steady_ns = SteadyNanoseconds();
+            if (!ParseEvent(message, order_book_update_callback, trade_callback)) {
                 HOT_WARNING << "Parsing error" << Endl;
             }
         }

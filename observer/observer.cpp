@@ -32,6 +32,25 @@ uint64_t PercentileFromSorted(const std::vector<uint64_t>& sorted, uint32_t perc
     return sorted[idx];
 }
 
+void WriteLatencyCsvHeader(std::ofstream& latency_csv) {
+    latency_csv
+        << "utc_s,samples,"
+        << "total_p50_ns,total_p90_ns,total_p95_ns,total_p99_ns,"
+        << "feeder_p50_ns,feeder_p90_ns,feeder_p95_ns,feeder_p99_ns,"
+        << "md_queue_p50_ns,md_queue_p90_ns,md_queue_p95_ns,md_queue_p99_ns,"
+        << "trader_p50_ns,trader_p90_ns,trader_p95_ns,trader_p99_ns,"
+        << "order_queue_p50_ns,order_queue_p90_ns,order_queue_p95_ns,order_queue_p99_ns"
+        << std::endl;
+}
+
+void SortAndWriteLatencyPercentiles(std::ofstream& latency_csv, std::vector<uint64_t>& values) {
+    std::sort(values.begin(), values.end());
+    latency_csv << ',' << PercentileFromSorted(values, 50)
+                << ',' << PercentileFromSorted(values, 90)
+                << ',' << PercentileFromSorted(values, 95)
+                << ',' << PercentileFromSorted(values, 99);
+}
+
 constexpr const char* GetTraderLogfilePath(TraderId id) noexcept {
     switch (id) {
         case TraderId::kBtcUsdt:
@@ -95,18 +114,38 @@ int ProcessLatencyAggregationAttempt(std::ofstream& latency_csv) {
     auto [ring_buffer] = shm->GetObjects();
     LOG_INFO << "Start latency aggregation (" << kLatencyBatchSize << " samples per batch) -> " << kLatencyCsvPath << Endl;
 
-    std::vector<uint64_t> batch;
-    batch.reserve(kLatencyBatchSize);
+    std::vector<uint64_t> batch_total;
+    std::vector<uint64_t> batch_feeder_ns;
+    std::vector<uint64_t> batch_md_queue_ns;
+    std::vector<uint64_t> batch_trader_ns;
+    std::vector<uint64_t> batch_order_queue_ns;
+    batch_total.reserve(kLatencyBatchSize);
+    batch_feeder_ns.reserve(kLatencyBatchSize);
+    batch_md_queue_ns.reserve(kLatencyBatchSize);
+    batch_trader_ns.reserve(kLatencyBatchSize);
+    batch_order_queue_ns.reserve(kLatencyBatchSize);
+
+    const auto clear_batches = [&]() {
+        batch_total.clear();
+        batch_feeder_ns.clear();
+        batch_md_queue_ns.clear();
+        batch_trader_ns.clear();
+        batch_order_queue_ns.clear();
+    };
 
     while (true) {
-        while (batch.size() < kLatencyBatchSize) {
+        while (batch_total.size() < kLatencyBatchSize) {
             LatencyNsSample sample;
             ReadResult result = ring_buffer->Read(sample);
             if (result == ReadResult::kSuccess) {
-                batch.push_back(sample.value);
+                batch_total.push_back(sample.delta_total);
+                batch_feeder_ns.push_back(sample.delta_feeder_ns);
+                batch_md_queue_ns.push_back(sample.delta_md_queue_ns);
+                batch_trader_ns.push_back(sample.delta_trader_ns);
+                batch_order_queue_ns.push_back(sample.delta_order_queue_ns);
             } else if (result == ReadResult::kConsumerIsDisabled) {
                 LOG_WARNING << "Latency consumer is disabled; reset and drop partial batch" << Endl;
-                batch.clear();
+                clear_batches();
                 ring_buffer->ResetConsumer();
             } else if (!shm->IsProducerAlive(kLivenessThresholdSeconds)) {
                 LOG_WARNING << "Latency producer is dead" << Endl;
@@ -114,21 +153,21 @@ int ProcessLatencyAggregationAttempt(std::ofstream& latency_csv) {
             }
         }
 
-        std::sort(batch.begin(), batch.end());
-        const uint64_t p50 = PercentileFromSorted(batch, 50);
-        const uint64_t p90 = PercentileFromSorted(batch, 90);
-        const uint64_t p95 = PercentileFromSorted(batch, 95);
-        const uint64_t p99 = PercentileFromSorted(batch, 99);
-
         std::error_code ec;
         std::uintmax_t file_size = std::filesystem::file_size(kLatencyCsvPath, ec);
         if (!ec && file_size == 0) {
-            latency_csv << "utc_s,samples,p50_ns,p90_ns,p95_ns,p99_ns" << std::endl;
+            WriteLatencyCsvHeader(latency_csv);
         }
 
-        latency_csv << NowSeconds() << ',' << kLatencyBatchSize << ',' << p50 << ',' << p90 << ',' << p95 << ',' << p99 << std::endl;
+        latency_csv << NowSeconds() << ',' << kLatencyBatchSize;
+        SortAndWriteLatencyPercentiles(latency_csv, batch_total);
+        SortAndWriteLatencyPercentiles(latency_csv, batch_feeder_ns);
+        SortAndWriteLatencyPercentiles(latency_csv, batch_md_queue_ns);
+        SortAndWriteLatencyPercentiles(latency_csv, batch_trader_ns);
+        SortAndWriteLatencyPercentiles(latency_csv, batch_order_queue_ns);
+        latency_csv << std::endl;
 
-        batch.clear();
+        clear_batches();
     }
 }
 

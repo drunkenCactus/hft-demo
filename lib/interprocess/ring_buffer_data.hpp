@@ -38,7 +38,8 @@ struct alignas(Alignment) OrderBookUpdate_ {
     };
 
     uint64_t event_timestamp_microseconds = 0;
-    uint64_t steady_nanoseconds = 0;
+    uint64_t feeder_read_steady_ns = 0;
+    uint64_t feeder_write_steady_ns = 0;
     uint64_t first_update_id = 0;
     uint64_t last_update_id = 0;
     uint64_t price = 0;
@@ -51,7 +52,8 @@ struct alignas(Alignment) OrderBookUpdate_ {
 template <uint32_t Alignment>
 struct alignas(Alignment) Trade_ {
     uint64_t event_timestamp_microseconds = 0;
-    uint64_t steady_nanoseconds = 0;
+    uint64_t feeder_read_steady_ns = 0;
+    uint64_t feeder_write_steady_ns = 0;
     uint64_t price = 0;
     uint64_t quantity = 0;
     Symbol symbol = Symbol::kUnknown;
@@ -65,7 +67,10 @@ struct alignas(Alignment) Order_ {
         kSell,
     };
 
-    uint64_t steady_nanoseconds = 0;
+    uint64_t feeder_read_steady_ns = 0;
+    uint64_t feeder_write_steady_ns = 0;
+    uint64_t trader_read_steady_ns = 0;
+    uint64_t trader_write_steady_ns = 0;
     uint64_t price = 0;
     uint64_t quantity = 0;
     Type type = Type::kBuy;
@@ -90,7 +95,11 @@ struct alignas(Alignment) ObserverData_ {
 
 template <uint32_t Alignment>
 struct alignas(Alignment) LatencyNsSample_ {
-    uint64_t value = 0;
+    uint64_t delta_total = 0;
+    uint64_t delta_feeder_ns = 0;
+    uint64_t delta_md_queue_ns = 0;
+    uint64_t delta_trader_ns = 0;
+    uint64_t delta_order_queue_ns = 0;
 };
 
 }  // namespace hft
