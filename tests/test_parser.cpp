@@ -704,3 +704,109 @@ TEST(Parser, ParseOrderBookSnapshot_NullCallback_ReturnsTrueForValidJson) {
     bool ok = ParseOrderBookSnapshot(json, nullptr);
     EXPECT_TRUE(ok);
 }
+
+TEST(Parser, ReusedDepthHandler_SecondParseDoesNotLeakLevelsFromFirst) {
+    const std::string json_three_bids = R"({
+        "e": "depthUpdate",
+        "E": 1,
+        "s": "BTCUSDT",
+        "U": 1,
+        "u": 2,
+        "b": [["1.0", "1"], ["1.1", "2"], ["1.2", "3"]],
+        "a": []
+    })";
+    const std::string json_one_bid = R"({
+        "e": "depthUpdate",
+        "E": 2,
+        "s": "ETHUSDT",
+        "U": 10,
+        "u": 20,
+        "b": [["2.0", "4"]],
+        "a": []
+    })";
+
+    std::vector<OrderBookUpdate> first;
+    ASSERT_TRUE(ParseDepthEvent(json_three_bids, [&first](OrderBookUpdate& u) { first.push_back(u); }));
+    ASSERT_EQ(first.size(), 3u);
+
+    std::vector<OrderBookUpdate> second;
+    ASSERT_TRUE(ParseDepthEvent(json_one_bid, [&second](OrderBookUpdate& u) { second.push_back(u); }));
+    ASSERT_EQ(second.size(), 1u);
+    EXPECT_EQ(second[0].symbol, Symbol::kEthUsdt);
+    EXPECT_EQ(second[0].first_update_id, 10u);
+    EXPECT_EQ(second[0].last_update_id, 20u);
+    EXPECT_EQ(second[0].price, 2ULL * kPriceScale);
+    EXPECT_FALSE(second[0].has_more);
+}
+
+TEST(Parser, ReusedDepthHandler_FailedParseThenSuccess_ResetsState) {
+    const std::string json_valid = R"({
+        "e": "depthUpdate",
+        "E": 1,
+        "s": "BTCUSDT",
+        "U": 0,
+        "u": 0,
+        "b": [["9.0", "1"]],
+        "a": []
+    })";
+
+    std::vector<OrderBookUpdate> updates;
+    auto cb = [&updates](OrderBookUpdate& u) { updates.push_back(u); };
+
+    EXPECT_FALSE(ParseDepthEvent("{ not json ", cb));
+    ASSERT_TRUE(ParseDepthEvent(json_valid, cb));
+    ASSERT_EQ(updates.size(), 1u);
+    EXPECT_EQ(updates[0].price, 9ULL * kPriceScale);
+}
+
+TEST(Parser, ReusedCombinedHandler_DepthThenTrade_NoCrossContamination) {
+    const std::string json_depth = R"({
+        "stream": "btcusdt@depth",
+        "data": {
+            "e": "depthUpdate",
+            "E": 1,
+            "s": "BTCUSDT",
+            "U": 0,
+            "u": 0,
+            "b": [["1.0", "1"], ["2.0", "2"]],
+            "a": []
+        }
+    })";
+    const std::string json_trade = R"({
+        "stream": "btcusdt@trade",
+        "data": {
+            "e": "trade",
+            "E": 1,
+            "s": "BTCUSDT",
+            "p": "0.001",
+            "q": "100",
+            "m": false
+        }
+    })";
+
+    std::vector<OrderBookUpdate> depth_updates;
+    Trade trade{};
+    bool trade_seen = false;
+
+    ASSERT_TRUE(ParseEvent(
+        json_depth,
+        [&depth_updates](OrderBookUpdate& u) { depth_updates.push_back(u); },
+        [&trade, &trade_seen](Trade& t) {
+            trade = t;
+            trade_seen = true;
+        }));
+    ASSERT_EQ(depth_updates.size(), 2u);
+    EXPECT_FALSE(trade_seen);
+
+    depth_updates.clear();
+    ASSERT_TRUE(ParseEvent(
+        json_trade,
+        [&depth_updates](OrderBookUpdate& u) { depth_updates.push_back(u); },
+        [&trade, &trade_seen](Trade& t) {
+            trade = t;
+            trade_seen = true;
+        }));
+    EXPECT_TRUE(depth_updates.empty());
+    EXPECT_TRUE(trade_seen);
+    EXPECT_EQ(trade.price, 100000ULL);
+}
