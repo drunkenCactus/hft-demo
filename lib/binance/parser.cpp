@@ -1,8 +1,11 @@
 #include "parser.hpp"
 
+#include <rapidjson/memorystream.h>
+#include <rapidjson/reader.h>
+
+#include <algorithm>
 #include <cstring>
 #include <limits>
-#include <rapidjson/document.h>
 
 namespace hft {
 
@@ -21,14 +24,11 @@ Symbol SymbolFromString(const char* s, std::size_t len) noexcept {
     return Symbol::kUnknown;
 }
 
-uint64_t GetUint64(const rapidjson::Value& v) noexcept {
-    if (v.IsUint64()) {
-        return v.GetUint64();
+uint64_t GetUint64FromMixed(int64_t i, uint64_t u, bool is_int) noexcept {
+    if (is_int) {
+        return static_cast<uint64_t>(i);
     }
-    if (v.IsInt64()) {
-        return static_cast<uint64_t>(v.GetInt64());
-    }
-    return 0;
+    return u;
 }
 
 constexpr uint64_t kEventTimeMicrosecondThreshold = 1'000'000'000'000'000ULL;
@@ -154,271 +154,954 @@ bool ParseFixedDecimalString(const char* first, const char* last, uint32_t decim
     return AssembleFixedDecimalToUint64(int_part, decimal_places, frac_part, frac_pad, out);
 }
 
-bool ParsePriceQuantity(const rapidjson::Value& arr, uint64_t& price, uint64_t& quantity) noexcept {
-    if (!arr.IsArray() || arr.Size() < 2) {
-        return false;
-    }
-    const auto& p = arr[0];
-    const auto& q = arr[1];
-    if (!p.IsString() || !q.IsString()) {
-        return false;
-    }
-    const char* price_start = p.GetString();
-    const char* price_end = price_start + p.GetStringLength();
-    const char* qty_start = q.GetString();
-    const char* qty_end = qty_start + q.GetStringLength();
-    if (!ParseFixedDecimalString(price_start, price_end, kPriceShift, price) ||
-        !ParseFixedDecimalString(qty_start, qty_end, kQuantityShift, quantity)) {
-        return false;
-    }
-    return true;
-}
-
-bool ParseDepthEvent(
-    const rapidjson::Value& value,
-    std::function<void(OrderBookUpdate&)> callback
-) noexcept {
-    if (!value.IsObject()) {
-        return false;
-    }
-    const auto e = value.FindMember("e");
-    if (e == value.MemberEnd() || !e->value.IsString() ||
-        std::strcmp(e->value.GetString(), "depthUpdate") != 0) {
-        return false;
-    }
-
-    if (!callback) {
-        return true;
-    }
-
-    const auto E = value.FindMember("E");
-    uint64_t event_ts = 0;
-    if (E != value.MemberEnd() && E->value.IsNumber()) {
-        event_ts = EventTimeToMicroseconds(GetUint64(E->value));
-    }
-
-    const auto U = value.FindMember("U");
-    const uint64_t first_id =
-        (U != value.MemberEnd() && U->value.IsNumber()) ? GetUint64(U->value) : 0;
-
-    const auto u = value.FindMember("u");
-    const uint64_t last_id =
-        (u != value.MemberEnd() && u->value.IsNumber()) ? GetUint64(u->value) : 0;
-
-    Symbol symbol = Symbol::kUnknown;
-    const auto s = value.FindMember("s");
-    if (s != value.MemberEnd() && s->value.IsString()) {
-        symbol = SymbolFromString(s->value.GetString(), s->value.GetStringLength());
-    }
-
-    OrderBookUpdate out{};
-    out.event_timestamp_microseconds = event_ts;
-    out.first_update_id = first_id;
-    out.last_update_id = last_id;
-    out.symbol = symbol;
-
-    const auto b = value.FindMember("b");
-    const auto a = value.FindMember("a");
-
-    const bool has_bids = b != value.MemberEnd() && b->value.IsArray() && b->value.Size() > 0;
-    const bool has_asks = a != value.MemberEnd() && a->value.IsArray() && a->value.Size() > 0;
-
-    if (has_bids) {
-        out.type = OrderBookUpdate::Type::kBid;
-        for (rapidjson::SizeType i = 0; i < b->value.Size(); ++i) {
-            if (!ParsePriceQuantity(b->value[i], out.price, out.quantity)) {
-                break;
-            }
-            out.has_more = has_asks || (i < b->value.Size() - 1);
-            callback(out);
-        }
-    }
-
-    if (has_asks) {
-        out.type = OrderBookUpdate::Type::kAsk;
-        for (rapidjson::SizeType i = 0; i < a->value.Size(); ++i) {
-            if (!ParsePriceQuantity(a->value[i], out.price, out.quantity)) {
-                break;
-            }
-            out.has_more = i < a->value.Size() - 1;
-            callback(out);
-        }
-    }
-
-    return true;
-}
-
-bool ParseTradeEvent(
-    const rapidjson::Value& value,
-    std::function<void(Trade&)> callback
-) noexcept {
-    if (!value.IsObject()) {
-        return false;
-    }
-    const auto e = value.FindMember("e");
-    if (e == value.MemberEnd() || !e->value.IsString() ||
-        std::strcmp(e->value.GetString(), "trade") != 0) {
-        return false;
-    }
-
-    Trade out{};
-
-    const auto E = value.FindMember("E");
-    if (E != value.MemberEnd() && E->value.IsNumber()) {
-        out.event_timestamp_microseconds = EventTimeToMicroseconds(GetUint64(E->value));
-    }
-
-    const auto s = value.FindMember("s");
-    if (s != value.MemberEnd() && s->value.IsString()) {
-        out.symbol = SymbolFromString(s->value.GetString(), s->value.GetStringLength());
-    }
-
-    const auto p = value.FindMember("p");
-    if (p == value.MemberEnd() || !p->value.IsString()) {
-        return false;
-    }
-    const char* price_start = p->value.GetString();
-    const char* price_end = price_start + p->value.GetStringLength();
-    if (!ParseFixedDecimalString(price_start, price_end, kPriceShift, out.price)) {
-        return false;
-    }
-
-    const auto q = value.FindMember("q");
-    if (q == value.MemberEnd() || !q->value.IsString()) {
-        return false;
-    }
-    const char* qty_start = q->value.GetString();
-    const char* qty_end = qty_start + q->value.GetStringLength();
-    if (!ParseFixedDecimalString(qty_start, qty_end, kQuantityShift, out.quantity)) {
-        return false;
-    }
-
-    const auto buyer_maker = value.FindMember("m");
-    if (buyer_maker == value.MemberEnd() || !buyer_maker->value.IsBool()) {
-        return false;
-    }
-    out.is_buyer_maker = buyer_maker->value.GetBool();
-
-    if (callback) {
-        callback(out);
-    }
-    return true;
-}
-
 bool IsDepthStream(std::string_view stream) noexcept {
-    return stream.size() >= 6 &&
-           (stream.ends_with("@depth@100ms") || stream.ends_with("@depth"));
+    return stream.size() >= 6 && (stream.ends_with("@depth@100ms") || stream.ends_with("@depth"));
 }
 
 bool IsTradeStream(std::string_view stream) noexcept {
     return stream.size() >= 6 && stream.ends_with("@trade");
 }
 
-}  // namespace
-
-bool ParseEvent(
-    std::string_view json,
-    std::function<void(OrderBookUpdate&)> order_book_update_callback,
-    std::function<void(Trade&)> trade_callback
-) noexcept {
-    rapidjson::Document doc;
-    doc.Parse(json.data(), json.size());
-    if (doc.HasParseError() || !doc.IsObject()) {
-        return false;
+bool JsonRootIsObject(std::string_view json) noexcept {
+    const char* p = json.data();
+    const char* const end = p + json.size();
+    while (p < end && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')) {
+        ++p;
     }
-
-    const auto stream_it = doc.FindMember("stream");
-    if (stream_it == doc.MemberEnd() || !stream_it->value.IsString()) {
-        return false;
-    }
-    const char* stream_str = stream_it->value.GetString();
-    const std::size_t stream_len = stream_it->value.GetStringLength();
-    const std::string_view stream(stream_str, stream_len);
-
-    const auto data_it = doc.FindMember("data");
-    if (data_it == doc.MemberEnd() || !data_it->value.IsObject()) {
-        return false;
-    }
-
-    if (IsDepthStream(stream)) {
-        return ParseDepthEvent(data_it->value, std::move(order_book_update_callback));
-    }
-    if (IsTradeStream(stream)) {
-        return ParseTradeEvent(data_it->value, std::move(trade_callback));
-    }
-    return false;
+    return p < end && *p == '{';
 }
+
+// --- depth update (SAX) ---
+
+// according to binance documentation, the maximum depth is 5000
+constexpr std::size_t kMaxDepthLevelsPerSide = 5000;
+
+enum class DepthPending : std::uint8_t {
+    kNone,
+    kEventType,
+    kEventTime,
+    kSymbol,
+    kFirstUpdateId,
+    kLastUpdateId,
+    kBids,
+    kAsks,
+};
+
+class DepthSaxHandler : public rapidjson::BaseReaderHandler<rapidjson::UTF8<>> {
+public:
+    explicit DepthSaxHandler(std::function<void(OrderBookUpdate&)> callback) noexcept
+        : callback_(std::move(callback))
+    {}
+
+    bool Default() {
+        return false;
+    }
+
+    bool Null() {
+        return false;
+    }
+
+    bool Bool(bool /*b*/) {
+        return false;
+    }
+
+    bool Int(int i) {
+        return Int64(static_cast<int64_t>(i));
+    }
+
+    bool Uint(unsigned i) {
+        return Uint64(static_cast<uint64_t>(i));
+    }
+
+    bool Int64(int64_t i) {
+        return Number(i, static_cast<uint64_t>(i), true);
+    }
+
+    bool Uint64(uint64_t i) {
+        return Number(static_cast<int64_t>(i), i, false);
+    }
+
+    bool Double(double /*d*/) {
+        return false;
+    }
+
+    bool String(const char* str, rapidjson::SizeType len, bool /*copy*/) {
+        if (array_depth_ == 2) {
+            if (stop_side_levels_) {
+                return true;
+            }
+            if (row_string_idx_ == 0) {
+                constexpr std::size_t kRow0Cap = sizeof(row0_storage_) - 1;
+                if (static_cast<std::size_t>(len) > kRow0Cap) {
+                    stop_side_levels_ = true;
+                    return true;
+                }
+                std::memcpy(row0_storage_, str, len);
+                row0_storage_[len] = '\0';
+                row0_len_ = len;
+                row_string_idx_ = 1;
+                return true;
+            }
+            if (row_string_idx_ == 1) {
+                uint64_t price = 0;
+                uint64_t qty = 0;
+                const char* const p0 = row0_storage_;
+                const char* const p0e = p0 + row0_len_;
+                if (!ParseFixedDecimalString(p0, p0e, kPriceShift, price) ||
+                    !ParseFixedDecimalString(str, str + len, kQuantityShift, qty)
+                ) {
+                    stop_side_levels_ = true;
+                    row_string_idx_ = 0;
+                    return true;
+                }
+                if (current_side_is_bid_) {
+                    if (bid_n_ >= kMaxDepthLevelsPerSide) {
+                        return false;
+                    }
+                    bid_prices_[bid_n_] = price;
+                    bid_qtys_[bid_n_] = qty;
+                    ++bid_n_;
+                } else {
+                    if (ask_n_ >= kMaxDepthLevelsPerSide) {
+                        return false;
+                    }
+                    ask_prices_[ask_n_] = price;
+                    ask_qtys_[ask_n_] = qty;
+                    ++ask_n_;
+                }
+                row_string_idx_ = 0;
+                return true;
+            }
+            return false;
+        }
+
+        switch (pending_) {
+        case DepthPending::kEventType:
+            pending_ = DepthPending::kNone;
+            if (len == 11 && std::memcmp(str, "depthUpdate", 11) == 0) {
+                valid_event_type_ = true;
+                return true;
+            }
+            return false;
+        case DepthPending::kSymbol:
+            pending_ = DepthPending::kNone;
+            symbol_ = SymbolFromString(str, len);
+            return true;
+        default:
+            pending_ = DepthPending::kNone;
+            return true;
+        }
+    }
+
+    bool StartObject() {
+        if (object_depth_ > 0) {
+            return false;
+        }
+        ++object_depth_;
+        return true;
+    }
+
+    bool Key(const char* str, rapidjson::SizeType len, bool /*copy*/) {
+        if (object_depth_ != 1 || array_depth_ != 0) {
+            return false;
+        }
+        if (len == 1) {
+            switch (str[0]) {
+            case 'e':
+                pending_ = DepthPending::kEventType;
+                return true;
+            case 'E':
+                pending_ = DepthPending::kEventTime;
+                return true;
+            case 's':
+                pending_ = DepthPending::kSymbol;
+                return true;
+            case 'U':
+                pending_ = DepthPending::kFirstUpdateId;
+                return true;
+            case 'u':
+                pending_ = DepthPending::kLastUpdateId;
+                return true;
+            case 'b':
+                pending_ = DepthPending::kBids;
+                return true;
+            case 'a':
+                pending_ = DepthPending::kAsks;
+                return true;
+            default:
+                pending_ = DepthPending::kNone;
+                return true;
+            }
+        }
+        pending_ = DepthPending::kNone;
+        return true;
+    }
+
+    bool EndObject(rapidjson::SizeType /*memberCount*/) {
+        if (object_depth_ != 1) {
+            return false;
+        }
+        --object_depth_;
+        if (!valid_event_type_) {
+            return false;
+        }
+        FlushLevels();
+        return true;
+    }
+
+    bool StartArray() {
+        if (array_depth_ == 0) {
+            if (pending_ == DepthPending::kBids) {
+                pending_ = DepthPending::kNone;
+                current_side_is_bid_ = true;
+                stop_side_levels_ = false;
+                ++array_depth_;
+                return true;
+            }
+            if (pending_ == DepthPending::kAsks) {
+                pending_ = DepthPending::kNone;
+                current_side_is_bid_ = false;
+                stop_side_levels_ = false;
+                ++array_depth_;
+                return true;
+            }
+            return false;
+        }
+        if (array_depth_ == 1) {
+            ++array_depth_;
+            row_string_idx_ = 0;
+            return true;
+        }
+        return false;
+    }
+
+    bool EndArray(rapidjson::SizeType /*elementCount*/) {
+        if (array_depth_ == 2) {
+            if (row_string_idx_ != 0) {
+                stop_side_levels_ = true;
+            }
+            row_string_idx_ = 0;
+            --array_depth_;
+            return true;
+        }
+        if (array_depth_ == 1) {
+            --array_depth_;
+            return true;
+        }
+        return false;
+    }
+
+private:
+    bool Number(int64_t i, uint64_t u, bool is_int) {
+        const uint64_t v = GetUint64FromMixed(i, u, is_int);
+        switch (pending_) {
+        case DepthPending::kEventTime:
+            pending_ = DepthPending::kNone;
+            event_ts_ = EventTimeToMicroseconds(v);
+            return true;
+        case DepthPending::kFirstUpdateId:
+            pending_ = DepthPending::kNone;
+            first_id_ = v;
+            return true;
+        case DepthPending::kLastUpdateId:
+            pending_ = DepthPending::kNone;
+            last_id_ = v;
+            return true;
+        default:
+            pending_ = DepthPending::kNone;
+            return true;
+        }
+    }
+
+    void FlushLevels() {
+        if (!callback_) {
+            return;
+        }
+        const bool has_asks = ask_n_ > 0;
+        OrderBookUpdate out{};
+        out.event_timestamp_microseconds = event_ts_;
+        out.first_update_id = first_id_;
+        out.last_update_id = last_id_;
+        out.symbol = symbol_;
+
+        for (std::size_t i = 0; i < bid_n_; ++i) {
+            out.type = OrderBookUpdate::Type::kBid;
+            out.price = bid_prices_[i];
+            out.quantity = bid_qtys_[i];
+            out.has_more = has_asks || (i < bid_n_ - 1);
+            callback_(out);
+        }
+        for (std::size_t i = 0; i < ask_n_; ++i) {
+            out.type = OrderBookUpdate::Type::kAsk;
+            out.price = ask_prices_[i];
+            out.quantity = ask_qtys_[i];
+            out.has_more = i < ask_n_ - 1;
+            callback_(out);
+        }
+    }
+
+private:
+    std::function<void(OrderBookUpdate&)> callback_;
+
+    int object_depth_ = 0;
+    int array_depth_ = 0;
+    DepthPending pending_ = DepthPending::kNone;
+    bool valid_event_type_ = false;
+
+    uint64_t event_ts_ = 0;
+    uint64_t first_id_ = 0;
+    uint64_t last_id_ = 0;
+    Symbol symbol_ = Symbol::kUnknown;
+
+    bool current_side_is_bid_ = false;
+    bool stop_side_levels_ = false;
+    int row_string_idx_ = 0;
+    char row0_storage_[96];
+    rapidjson::SizeType row0_len_ = 0;
+
+    std::size_t bid_n_ = 0;
+    std::size_t ask_n_ = 0;
+    uint64_t bid_prices_[kMaxDepthLevelsPerSide];
+    uint64_t bid_qtys_[kMaxDepthLevelsPerSide];
+    uint64_t ask_prices_[kMaxDepthLevelsPerSide];
+    uint64_t ask_qtys_[kMaxDepthLevelsPerSide];
+};
+
+// --- trade (SAX) ---
+
+enum class TradePending : std::uint8_t {
+    kNone,
+    kEventType,
+    kEventTime,
+    kSymbol,
+    kPrice,
+    kQuantity,
+    kBuyerMaker,
+};
+
+class TradeSaxHandler : public rapidjson::BaseReaderHandler<rapidjson::UTF8<>> {
+public:
+    explicit TradeSaxHandler(std::function<void(Trade&)> callback) noexcept
+        : callback_(std::move(callback))
+    {}
+
+    bool Default() {
+        return false;
+    }
+
+    bool Null() {
+        return false;
+    }
+
+    bool Bool(bool b) {
+        if (pending_ != TradePending::kBuyerMaker) {
+            pending_ = TradePending::kNone;
+            return true;
+        }
+        pending_ = TradePending::kNone;
+        out_.is_buyer_maker = b;
+        have_buyer_maker_ = true;
+        return true;
+    }
+
+    bool Int(int i) {
+        return Int64(static_cast<int64_t>(i));
+    }
+
+    bool Uint(unsigned i) {
+        return Uint64(static_cast<uint64_t>(i));
+    }
+
+    bool Int64(int64_t i) {
+        return Number(i, static_cast<uint64_t>(i), true);
+    }
+
+    bool Uint64(uint64_t i) {
+        return Number(static_cast<int64_t>(i), i, false);
+    }
+
+    bool Double(double /*d*/) {
+        return false;
+    }
+
+    bool String(const char* str, rapidjson::SizeType len, bool /*copy*/) {
+        switch (pending_) {
+        case TradePending::kEventType:
+            pending_ = TradePending::kNone;
+            if (len == 5 && std::memcmp(str, "trade", 5) == 0) {
+                valid_event_type_ = true;
+                return true;
+            }
+            return false;
+        case TradePending::kSymbol:
+            pending_ = TradePending::kNone;
+            out_.symbol = SymbolFromString(str, len);
+            return true;
+        case TradePending::kPrice:
+            pending_ = TradePending::kNone;
+            if (!ParseFixedDecimalString(str, str + len, kPriceShift, out_.price)) {
+                return false;
+            }
+            have_price_ = true;
+            return true;
+        case TradePending::kQuantity:
+            pending_ = TradePending::kNone;
+            if (!ParseFixedDecimalString(str, str + len, kQuantityShift, out_.quantity)) {
+                return false;
+            }
+            have_qty_ = true;
+            return true;
+        default:
+            pending_ = TradePending::kNone;
+            return true;
+        }
+    }
+
+    bool StartObject() {
+        if (object_depth_ > 0) {
+            return false;
+        }
+        ++object_depth_;
+        return true;
+    }
+
+    bool Key(const char* str, rapidjson::SizeType len, bool /*copy*/) {
+        if (object_depth_ != 1) {
+            return false;
+        }
+        if (len == 1) {
+            switch (str[0]) {
+            case 'e':
+                pending_ = TradePending::kEventType;
+                return true;
+            case 'E':
+                pending_ = TradePending::kEventTime;
+                return true;
+            case 's':
+                pending_ = TradePending::kSymbol;
+                return true;
+            case 'p':
+                pending_ = TradePending::kPrice;
+                return true;
+            case 'q':
+                pending_ = TradePending::kQuantity;
+                return true;
+            case 'm':
+                pending_ = TradePending::kBuyerMaker;
+                return true;
+            default:
+                pending_ = TradePending::kNone;
+                return true;
+            }
+        }
+        pending_ = TradePending::kNone;
+        return true;
+    }
+
+    bool EndObject(rapidjson::SizeType /*memberCount*/) {
+        if (object_depth_ != 1) {
+            return false;
+        }
+        --object_depth_;
+        if (!valid_event_type_ || !have_price_ || !have_qty_ || !have_buyer_maker_) {
+            return false;
+        }
+        if (callback_) {
+            callback_(out_);
+        }
+        return true;
+    }
+
+private:
+    bool Number(int64_t i, uint64_t u, bool is_int) {
+        const uint64_t v = GetUint64FromMixed(i, u, is_int);
+        if (pending_ == TradePending::kEventTime) {
+            pending_ = TradePending::kNone;
+            out_.event_timestamp_microseconds = EventTimeToMicroseconds(v);
+            return true;
+        }
+        pending_ = TradePending::kNone;
+        return true;
+    }
+
+private:
+    std::function<void(Trade&)> callback_;
+    int object_depth_ = 0;
+    TradePending pending_ = TradePending::kNone;
+    bool valid_event_type_ = false;
+    bool have_price_ = false;
+    bool have_qty_ = false;
+    bool have_buyer_maker_ = false;
+    Trade out_{};
+};
+
+// --- order book snapshot (SAX) ---
+
+class SnapshotSaxHandler : public rapidjson::BaseReaderHandler<rapidjson::UTF8<>> {
+public:
+    explicit SnapshotSaxHandler(std::function<void(const OrderBookSnapshot&)> callback) noexcept
+        : callback_(std::move(callback))
+    {}
+
+    bool Default() {
+        return false;
+    }
+
+    bool Null() {
+        return false;
+    }
+
+    bool Bool(bool /*b*/) {
+        return false;
+    }
+
+    bool Int(int i) {
+        return Int64(static_cast<int64_t>(i));
+    }
+
+    bool Uint(unsigned i) {
+        return Uint64(static_cast<uint64_t>(i));
+    }
+
+    bool Int64(int64_t i) {
+        return Number(i, static_cast<uint64_t>(i), true);
+    }
+
+    bool Uint64(uint64_t i) {
+        return Number(static_cast<int64_t>(i), i, false);
+    }
+
+    bool Double(double /*d*/) {
+        return false;
+    }
+
+    bool String(const char* str, rapidjson::SizeType len, bool /*copy*/) {
+        if (array_depth_ == 2) {
+            if (in_bids_ && bids_side_done_) {
+                return true;
+            }
+            if (in_asks_ && asks_side_done_) {
+                return true;
+            }
+            if (in_bids_) {
+                if (out_.bids_depth >= kOrderBookDepth) {
+                    return true;
+                }
+            } else if (in_asks_) {
+                if (out_.asks_depth >= kOrderBookDepth) {
+                    return true;
+                }
+            } else {
+                return false;
+            }
+            if (row_string_idx_ == 0) {
+                constexpr std::size_t kRow0Cap = sizeof(row0_storage_) - 1;
+                if (static_cast<std::size_t>(len) > kRow0Cap) {
+                    if (in_bids_) {
+                        bids_side_done_ = true;
+                    } else {
+                        asks_side_done_ = true;
+                    }
+                    row_string_idx_ = 0;
+                    return true;
+                }
+                std::memcpy(row0_storage_, str, len);
+                row0_storage_[len] = '\0';
+                row0_len_ = len;
+                row_string_idx_ = 1;
+                return true;
+            }
+            if (row_string_idx_ == 1) {
+                uint64_t price = 0;
+                uint64_t qty = 0;
+                const char* const p0 = row0_storage_;
+                const char* const p0e = p0 + row0_len_;
+                if (!ParseFixedDecimalString(p0, p0e, kPriceShift, price) ||
+                    !ParseFixedDecimalString(str, str + len, kQuantityShift, qty)
+                ) {
+                    if (in_bids_) {
+                        bids_side_done_ = true;
+                    } else {
+                        asks_side_done_ = true;
+                    }
+                    row_string_idx_ = 0;
+                    return true;
+                }
+                if (in_bids_) {
+                    const uint32_t i = out_.bids_depth;
+                    out_.bids_prices[i] = price;
+                    out_.bids_quantities[i] = qty;
+                    ++out_.bids_depth;
+                } else {
+                    const uint32_t i = out_.asks_depth;
+                    out_.asks_prices[i] = price;
+                    out_.asks_quantities[i] = qty;
+                    ++out_.asks_depth;
+                }
+                row_string_idx_ = 0;
+                return true;
+            }
+            return false;
+        }
+        pending_snapshot_ = 0;
+        return true;
+    }
+
+    bool StartObject() {
+        if (object_depth_ > 0) {
+            return false;
+        }
+        ++object_depth_;
+        return true;
+    }
+
+    bool Key(const char* str, rapidjson::SizeType len, bool /*copy*/) {
+        if (object_depth_ != 1 || array_depth_ != 0) {
+            return false;
+        }
+        if (len == 12 && std::memcmp(str, "lastUpdateId", 12) == 0) {
+            pending_snapshot_ = 1;
+            return true;
+        }
+        if (len == 4 && std::memcmp(str, "bids", 4) == 0) {
+            pending_snapshot_ = 2;
+            return true;
+        }
+        if (len == 4 && std::memcmp(str, "asks", 4) == 0) {
+            pending_snapshot_ = 3;
+            return true;
+        }
+        pending_snapshot_ = 0;
+        return true;
+    }
+
+    bool EndObject(rapidjson::SizeType /*memberCount*/) {
+        if (object_depth_ != 1) {
+            return false;
+        }
+        --object_depth_;
+        if (array_depth_ != 0) {
+            return false;
+        }
+        if (callback_) {
+            callback_(out_);
+        }
+        return true;
+    }
+
+    bool StartArray() {
+        if (object_depth_ != 1) {
+            return false;
+        }
+        if (pending_snapshot_ == 2) {
+            pending_snapshot_ = 0;
+            in_bids_ = true;
+            in_asks_ = false;
+            ++array_depth_;
+            return true;
+        }
+        if (pending_snapshot_ == 3) {
+            pending_snapshot_ = 0;
+            in_bids_ = false;
+            in_asks_ = true;
+            ++array_depth_;
+            return true;
+        }
+        if (array_depth_ == 1) {
+            ++array_depth_;
+            row_string_idx_ = 0;
+            return true;
+        }
+        return false;
+    }
+
+    bool EndArray(rapidjson::SizeType /*elementCount*/) {
+        if (array_depth_ == 2) {
+            row_string_idx_ = 0;
+            --array_depth_;
+            return true;
+        }
+        if (array_depth_ == 1) {
+            --array_depth_;
+            in_bids_ = false;
+            in_asks_ = false;
+            return true;
+        }
+        return false;
+    }
+
+private:
+    bool Number(int64_t i, uint64_t u, bool is_int) {
+        const uint64_t v = GetUint64FromMixed(i, u, is_int);
+        if (pending_snapshot_ == 1) {
+            pending_snapshot_ = 0;
+            out_.last_update_id = v;
+            return true;
+        }
+        pending_snapshot_ = 0;
+        return true;
+    }
+
+private:
+    std::function<void(const OrderBookSnapshot&)> callback_;
+    int object_depth_ = 0;
+    int array_depth_ = 0;
+    int pending_snapshot_ = 0;
+    bool in_bids_ = false;
+    bool in_asks_ = false;
+    bool bids_side_done_ = false;
+    bool asks_side_done_ = false;
+    int row_string_idx_ = 0;
+    char row0_storage_[96];
+    rapidjson::SizeType row0_len_ = 0;
+    OrderBookSnapshot out_{};
+};
+
+// --- combined stream wrapper ---
+
+class CombinedSaxHandler : public rapidjson::BaseReaderHandler<rapidjson::UTF8<>> {
+public:
+    CombinedSaxHandler(
+        std::function<void(OrderBookUpdate&)> order_book_update_callback,
+        std::function<void(Trade&)> trade_callback
+    )
+        : order_book_cb_(std::move(order_book_update_callback))
+        , trade_cb_(std::move(trade_callback))
+        , depth_(order_book_cb_)
+        , trade_(trade_cb_)
+    {}
+
+    bool HaveStream() const noexcept {
+        return have_stream_;
+    }
+
+    bool SawData() const noexcept {
+        return saw_data_;
+    }
+
+    bool Default() {
+        return false;
+    }
+
+    bool Null() {
+        return false;
+    }
+
+    bool Bool(bool b) {
+        if (expect_data_object_) {
+            return false;
+        }
+        if (in_data_) {
+            if (data_is_depth_) {
+                return false;
+            }
+            return trade_.Bool(b);
+        }
+        return false;
+    }
+
+    bool Int(int i) {
+        if (expect_data_object_) {
+            return false;
+        }
+        if (in_data_) {
+            return data_is_depth_ ? depth_.Int(i) : trade_.Int(i);
+        }
+        return false;
+    }
+
+    bool Uint(unsigned i) {
+        if (expect_data_object_) {
+            return false;
+        }
+        if (in_data_) {
+            return data_is_depth_ ? depth_.Uint(i) : trade_.Uint(i);
+        }
+        return false;
+    }
+
+    bool Int64(int64_t i) {
+        if (expect_data_object_) {
+            return false;
+        }
+        if (in_data_) {
+            return data_is_depth_ ? depth_.Int64(i) : trade_.Int64(i);
+        }
+        return false;
+    }
+
+    bool Uint64(uint64_t i) {
+        if (expect_data_object_) {
+            return false;
+        }
+        if (in_data_) {
+            return data_is_depth_ ? depth_.Uint64(i) : trade_.Uint64(i);
+        }
+        return false;
+    }
+
+    bool Double(double /*d*/) {
+        return false;
+    }
+
+    bool String(const char* str, rapidjson::SizeType len, bool copy) {
+        if (expect_data_object_) {
+            return false;
+        }
+        if (in_data_) {
+            return data_is_depth_ ? depth_.String(str, len, copy) : trade_.String(str, len, copy);
+        }
+        if (pending_stream_string_) {
+            pending_stream_string_ = false;
+            stream_len_ = std::min<std::size_t>(len, sizeof(stream_buf_) - 1);
+            std::memcpy(stream_buf_, str, stream_len_);
+            stream_buf_[stream_len_] = '\0';
+            have_stream_ = true;
+            return true;
+        }
+        return true;
+    }
+
+    bool StartObject() {
+        if (expect_data_object_) {
+            expect_data_object_ = false;
+            if (!have_stream_) {
+                return false;
+            }
+            const std::string_view stream(stream_buf_, stream_len_);
+            if (!IsDepthStream(stream) && !IsTradeStream(stream)) {
+                return false;
+            }
+            saw_data_ = true;
+            in_data_ = true;
+            data_is_depth_ = IsDepthStream(stream);
+            if (data_is_depth_) {
+                depth_ = DepthSaxHandler(order_book_cb_);
+                return depth_.StartObject();
+            }
+            trade_ = TradeSaxHandler(trade_cb_);
+            return trade_.StartObject();
+        }
+        if (in_data_) {
+            return false;
+        }
+        ++root_depth_;
+        return true;
+    }
+
+    bool Key(const char* str, rapidjson::SizeType len, bool copy) {
+        if (in_data_) {
+            return data_is_depth_ ? depth_.Key(str, len, copy) : trade_.Key(str, len, copy);
+        }
+        if (len == 6 && std::memcmp(str, "stream", 6) == 0) {
+            pending_stream_string_ = true;
+            return true;
+        }
+        if (len == 4 && std::memcmp(str, "data", 4) == 0) {
+            expect_data_object_ = true;
+            return true;
+        }
+        return true;
+    }
+
+    bool EndObject(rapidjson::SizeType memberCount) {
+        if (in_data_) {
+            const bool ok = data_is_depth_ ? depth_.EndObject(memberCount) : trade_.EndObject(memberCount);
+            if (!ok) {
+                return false;
+            }
+            in_data_ = false;
+            return true;
+        }
+        if (root_depth_ > 0) {
+            --root_depth_;
+        }
+        return true;
+    }
+
+    bool StartArray() {
+        if (expect_data_object_) {
+            return false;
+        }
+        if (in_data_) {
+            return data_is_depth_ ? depth_.StartArray() : trade_.StartArray();
+        }
+        return false;
+    }
+
+    bool EndArray(rapidjson::SizeType elementCount) {
+        if (in_data_) {
+            return data_is_depth_ ? depth_.EndArray(elementCount) : trade_.EndArray(elementCount);
+        }
+        return false;
+    }
+
+private:
+    std::function<void(OrderBookUpdate&)> order_book_cb_;
+    std::function<void(Trade&)> trade_cb_;
+
+    int root_depth_ = 0;
+    bool pending_stream_string_ = false;
+    bool have_stream_ = false;
+    char stream_buf_[256];
+    std::size_t stream_len_ = 0;
+
+    bool expect_data_object_ = false;
+    bool saw_data_ = false;
+    bool in_data_ = false;
+    bool data_is_depth_ = false;
+
+    DepthSaxHandler depth_;
+    TradeSaxHandler trade_;
+};
+
+}  // namespace
 
 bool ParseDepthEvent(
     std::string_view json,
     std::function<void(OrderBookUpdate&)> callback
 ) noexcept {
-    rapidjson::Document doc;
-    doc.Parse(json.data(), json.size());
-    if (doc.HasParseError() || !doc.IsObject()) {
-        return false;
-    }
-    return ParseDepthEvent(doc.GetObject(), callback);
+    DepthSaxHandler handler(std::move(callback));
+    rapidjson::MemoryStream ms(json.data(), json.size());
+    rapidjson::Reader reader;
+    return reader.Parse(ms, handler);
 }
 
 bool ParseTradeEvent(
     std::string_view json,
     std::function<void(Trade&)> callback
 ) noexcept {
-    rapidjson::Document doc;
-    doc.Parse(json.data(), json.size());
-    if (doc.HasParseError() || !doc.IsObject()) {
-        return false;
-    }
-    return ParseTradeEvent(doc.GetObject(), callback);
+    TradeSaxHandler handler(std::move(callback));
+    rapidjson::MemoryStream ms(json.data(), json.size());
+    rapidjson::Reader reader;
+    return reader.Parse(ms, handler);
 }
 
-bool ParseOrderBookSnapshot(std::string_view json, std::function<void(const OrderBookSnapshot&)> callback) noexcept {
-    rapidjson::Document doc;
-    doc.Parse(json.data(), json.size());
-    if (doc.HasParseError() || !doc.IsObject()) {
+bool ParseOrderBookSnapshot(
+    std::string_view json,
+    std::function<void(const OrderBookSnapshot&)> callback
+) noexcept {
+    if (!JsonRootIsObject(json)) {
         return false;
     }
+    SnapshotSaxHandler handler(std::move(callback));
+    rapidjson::MemoryStream ms(json.data(), json.size());
+    rapidjson::Reader reader;
+    return reader.Parse(ms, handler);
+}
 
-    OrderBookSnapshot out{};
-
-    const auto last_update_id_member = doc.FindMember("lastUpdateId");
-    if (last_update_id_member != doc.MemberEnd() && last_update_id_member->value.IsNumber()) {
-        out.last_update_id = GetUint64(last_update_id_member->value);
+bool ParseEvent(
+    std::string_view json,
+    std::function<void(OrderBookUpdate&)> order_book_update_callback,
+    std::function<void(Trade&)> trade_callback
+) noexcept {
+    CombinedSaxHandler handler(std::move(order_book_update_callback), std::move(trade_callback));
+    rapidjson::MemoryStream ms(json.data(), json.size());
+    rapidjson::Reader reader;
+    if (!reader.Parse(ms, handler)) {
+        return false;
     }
-
-    const auto bids = doc.FindMember("bids");
-    if (bids != doc.MemberEnd() && bids->value.IsArray()) {
-        const auto& arr = bids->value;
-        const auto n = std::min(arr.Size(), static_cast<rapidjson::SizeType>(kOrderBookDepth));
-        uint32_t count = 0;
-        for (rapidjson::SizeType i = 0; i < n; ++i) {
-            if (!ParsePriceQuantity(arr[i], out.bids_prices[i], out.bids_quantities[i])) {
-                break;
-            }
-            ++count;
-        }
-        out.bids_depth = count;
-    }
-
-    const auto asks = doc.FindMember("asks");
-    if (asks != doc.MemberEnd() && asks->value.IsArray()) {
-        const auto& arr = asks->value;
-        const auto n = std::min(arr.Size(), static_cast<rapidjson::SizeType>(kOrderBookDepth));
-        uint32_t count = 0;
-        for (rapidjson::SizeType i = 0; i < n; ++i) {
-            if (!ParsePriceQuantity(arr[i], out.asks_prices[i], out.asks_quantities[i])) {
-                break;
-            }
-            ++count;
-        }
-        out.asks_depth = count;
-    }
-
-    if (callback) {
-        callback(out);
-    }
-    return true;
+    return handler.HaveStream() && handler.SawData();
 }
 
 }  // namespace hft
