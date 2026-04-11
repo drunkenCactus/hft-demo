@@ -189,9 +189,49 @@ enum class DepthPending : std::uint8_t {
 
 class DepthSaxHandler : public rapidjson::BaseReaderHandler<rapidjson::UTF8<>> {
 public:
-    explicit DepthSaxHandler(std::function<void(OrderBookUpdate&)> callback) noexcept
-        : callback_(std::move(callback))
-    {}
+    void Reset() noexcept {
+        object_depth_ = 0;
+        array_depth_ = 0;
+        pending_ = DepthPending::kNone;
+        valid_event_type_ = false;
+        event_timestamp_microseconds_ = 0;
+        first_update_id_ = 0;
+        last_update_id_ = 0;
+        symbol_ = Symbol::kUnknown;
+        current_side_is_bid_ = false;
+        stop_side_levels_ = false;
+        row_string_idx_ = 0;
+        row0_len_ = 0;
+        bid_n_ = 0;
+        ask_n_ = 0;
+    }
+
+    void Release(const std::function<void(OrderBookUpdate&)>& callback) noexcept {
+        if (!callback) {
+            return;
+        }
+        const bool has_asks = ask_n_ > 0;
+        OrderBookUpdate out{};
+        out.event_timestamp_microseconds = event_timestamp_microseconds_;
+        out.first_update_id = first_update_id_;
+        out.last_update_id = last_update_id_;
+        out.symbol = symbol_;
+
+        for (std::size_t i = 0; i < bid_n_; ++i) {
+            out.type = OrderBookUpdate::Type::kBid;
+            out.price = bid_prices_[i];
+            out.quantity = bid_qtys_[i];
+            out.has_more = has_asks || (i < bid_n_ - 1);
+            callback(out);
+        }
+        for (std::size_t i = 0; i < ask_n_; ++i) {
+            out.type = OrderBookUpdate::Type::kAsk;
+            out.price = ask_prices_[i];
+            out.quantity = ask_qtys_[i];
+            out.has_more = i < ask_n_ - 1;
+            callback(out);
+        }
+    }
 
     bool Default() {
         return false;
@@ -345,7 +385,6 @@ public:
         if (!valid_event_type_) {
             return false;
         }
-        FlushLevels();
         return true;
     }
 
@@ -397,15 +436,15 @@ private:
         switch (pending_) {
         case DepthPending::kEventTime:
             pending_ = DepthPending::kNone;
-            event_ts_ = EventTimeToMicroseconds(v);
+            event_timestamp_microseconds_ = EventTimeToMicroseconds(v);
             return true;
         case DepthPending::kFirstUpdateId:
             pending_ = DepthPending::kNone;
-            first_id_ = v;
+            first_update_id_ = v;
             return true;
         case DepthPending::kLastUpdateId:
             pending_ = DepthPending::kNone;
-            last_id_ = v;
+            last_update_id_ = v;
             return true;
         default:
             pending_ = DepthPending::kNone;
@@ -413,44 +452,15 @@ private:
         }
     }
 
-    void FlushLevels() {
-        if (!callback_) {
-            return;
-        }
-        const bool has_asks = ask_n_ > 0;
-        OrderBookUpdate out{};
-        out.event_timestamp_microseconds = event_ts_;
-        out.first_update_id = first_id_;
-        out.last_update_id = last_id_;
-        out.symbol = symbol_;
-
-        for (std::size_t i = 0; i < bid_n_; ++i) {
-            out.type = OrderBookUpdate::Type::kBid;
-            out.price = bid_prices_[i];
-            out.quantity = bid_qtys_[i];
-            out.has_more = has_asks || (i < bid_n_ - 1);
-            callback_(out);
-        }
-        for (std::size_t i = 0; i < ask_n_; ++i) {
-            out.type = OrderBookUpdate::Type::kAsk;
-            out.price = ask_prices_[i];
-            out.quantity = ask_qtys_[i];
-            out.has_more = i < ask_n_ - 1;
-            callback_(out);
-        }
-    }
-
 private:
-    std::function<void(OrderBookUpdate&)> callback_;
-
     int object_depth_ = 0;
     int array_depth_ = 0;
     DepthPending pending_ = DepthPending::kNone;
     bool valid_event_type_ = false;
 
-    uint64_t event_ts_ = 0;
-    uint64_t first_id_ = 0;
-    uint64_t last_id_ = 0;
+    uint64_t event_timestamp_microseconds_ = 0;
+    uint64_t first_update_id_ = 0;
+    uint64_t last_update_id_ = 0;
     Symbol symbol_ = Symbol::kUnknown;
 
     bool current_side_is_bid_ = false;
@@ -481,9 +491,21 @@ enum class TradePending : std::uint8_t {
 
 class TradeSaxHandler : public rapidjson::BaseReaderHandler<rapidjson::UTF8<>> {
 public:
-    explicit TradeSaxHandler(std::function<void(Trade&)> callback) noexcept
-        : callback_(std::move(callback))
-    {}
+    void Reset() noexcept {
+        object_depth_ = 0;
+        pending_ = TradePending::kNone;
+        valid_event_type_ = false;
+        have_price_ = false;
+        have_qty_ = false;
+        have_buyer_maker_ = false;
+        out_ = Trade{};
+    }
+
+    void Release(const std::function<void(Trade&)>& callback) noexcept {
+        if (callback) {
+            callback(out_);
+        }
+    }
 
     bool Default() {
         return false;
@@ -606,9 +628,6 @@ public:
         if (!valid_event_type_ || !have_price_ || !have_qty_ || !have_buyer_maker_) {
             return false;
         }
-        if (callback_) {
-            callback_(out_);
-        }
         return true;
     }
 
@@ -625,7 +644,6 @@ private:
     }
 
 private:
-    std::function<void(Trade&)> callback_;
     int object_depth_ = 0;
     TradePending pending_ = TradePending::kNone;
     bool valid_event_type_ = false;
@@ -639,9 +657,24 @@ private:
 
 class SnapshotSaxHandler : public rapidjson::BaseReaderHandler<rapidjson::UTF8<>> {
 public:
-    explicit SnapshotSaxHandler(std::function<void(const OrderBookSnapshot&)> callback) noexcept
-        : callback_(std::move(callback))
-    {}
+    void Reset() noexcept {
+        object_depth_ = 0;
+        array_depth_ = 0;
+        pending_snapshot_ = 0;
+        in_bids_ = false;
+        in_asks_ = false;
+        bids_side_done_ = false;
+        asks_side_done_ = false;
+        row_string_idx_ = 0;
+        row0_len_ = 0;
+        out_ = OrderBookSnapshot{};
+    }
+
+    void Release(const std::function<void(const OrderBookSnapshot&)>& callback) noexcept {
+        if (callback) {
+            callback(out_);
+        }
+    }
 
     bool Default() {
         return false;
@@ -783,9 +816,6 @@ public:
         if (array_depth_ != 0) {
             return false;
         }
-        if (callback_) {
-            callback_(out_);
-        }
         return true;
     }
 
@@ -843,7 +873,6 @@ private:
     }
 
 private:
-    std::function<void(const OrderBookSnapshot&)> callback_;
     int object_depth_ = 0;
     int array_depth_ = 0;
     int pending_snapshot_ = 0;
@@ -861,15 +890,35 @@ private:
 
 class CombinedSaxHandler : public rapidjson::BaseReaderHandler<rapidjson::UTF8<>> {
 public:
-    CombinedSaxHandler(
-        std::function<void(OrderBookUpdate&)> order_book_update_callback,
-        std::function<void(Trade&)> trade_callback
-    )
-        : order_book_cb_(std::move(order_book_update_callback))
-        , trade_cb_(std::move(trade_callback))
-        , depth_(order_book_cb_)
-        , trade_(trade_cb_)
-    {}
+    void Reset() noexcept {
+        root_depth_ = 0;
+        pending_stream_string_ = false;
+        have_stream_ = false;
+        stream_len_ = 0;
+        expect_data_object_ = false;
+        saw_data_ = false;
+        in_data_ = false;
+        data_is_depth_ = false;
+        pending_data_release_ = false;
+        pending_data_is_depth_ = false;
+        depth_.Reset();
+        trade_.Reset();
+    }
+
+    void Release(
+        const std::function<void(OrderBookUpdate&)>& order_book_update_callback,
+        const std::function<void(Trade&)>& trade_callback
+    ) noexcept {
+        if (!pending_data_release_) {
+            return;
+        }
+        if (pending_data_is_depth_) {
+            depth_.Release(order_book_update_callback);
+        } else {
+            trade_.Release(trade_callback);
+        }
+        pending_data_release_ = false;
+    }
 
     bool HaveStream() const noexcept {
         return have_stream_;
@@ -976,11 +1025,10 @@ public:
             in_data_ = true;
             data_is_depth_ = IsDepthStream(stream);
             if (data_is_depth_) {
-                depth_ = DepthSaxHandler(order_book_cb_);
                 return depth_.StartObject();
+            } else {
+                return trade_.StartObject();
             }
-            trade_ = TradeSaxHandler(trade_cb_);
-            return trade_.StartObject();
         }
         if (in_data_) {
             return false;
@@ -1010,6 +1058,8 @@ public:
             if (!ok) {
                 return false;
             }
+            pending_data_release_ = true;
+            pending_data_is_depth_ = data_is_depth_;
             in_data_ = false;
             return true;
         }
@@ -1037,9 +1087,6 @@ public:
     }
 
 private:
-    std::function<void(OrderBookUpdate&)> order_book_cb_;
-    std::function<void(Trade&)> trade_cb_;
-
     int root_depth_ = 0;
     bool pending_stream_string_ = false;
     bool have_stream_ = false;
@@ -1050,6 +1097,8 @@ private:
     bool saw_data_ = false;
     bool in_data_ = false;
     bool data_is_depth_ = false;
+    bool pending_data_release_ = false;
+    bool pending_data_is_depth_ = false;
 
     DepthSaxHandler depth_;
     TradeSaxHandler trade_;
@@ -1061,33 +1110,54 @@ bool ParseDepthEvent(
     std::string_view json,
     std::function<void(OrderBookUpdate&)> callback
 ) noexcept {
-    DepthSaxHandler handler(std::move(callback));
+    static rapidjson::Reader reader;
+    static DepthSaxHandler handler;
+
+    handler.Reset();
     rapidjson::MemoryStream ms(json.data(), json.size());
-    rapidjson::Reader reader;
-    return reader.Parse(ms, handler);
+    if (reader.Parse(ms, handler)) {
+        handler.Release(callback);
+        return true;
+    } else {
+        return false;
+    }
 }
 
 bool ParseTradeEvent(
     std::string_view json,
     std::function<void(Trade&)> callback
 ) noexcept {
-    TradeSaxHandler handler(std::move(callback));
+    static rapidjson::Reader reader;
+    static TradeSaxHandler handler;
+
+    handler.Reset();
     rapidjson::MemoryStream ms(json.data(), json.size());
-    rapidjson::Reader reader;
-    return reader.Parse(ms, handler);
+    if (reader.Parse(ms, handler)) {
+        handler.Release(callback);
+        return true;
+    } else {
+        return false;
+    }
 }
 
 bool ParseOrderBookSnapshot(
     std::string_view json,
     std::function<void(const OrderBookSnapshot&)> callback
 ) noexcept {
+    static rapidjson::Reader reader;
+    static SnapshotSaxHandler handler;
+
     if (!JsonRootIsObject(json)) {
         return false;
     }
-    SnapshotSaxHandler handler(std::move(callback));
+    handler.Reset();
     rapidjson::MemoryStream ms(json.data(), json.size());
-    rapidjson::Reader reader;
-    return reader.Parse(ms, handler);
+    if (reader.Parse(ms, handler)) {
+        handler.Release(callback);
+        return true;
+    } else {
+        return false;
+    }
 }
 
 bool ParseEvent(
@@ -1095,13 +1165,17 @@ bool ParseEvent(
     std::function<void(OrderBookUpdate&)> order_book_update_callback,
     std::function<void(Trade&)> trade_callback
 ) noexcept {
-    CombinedSaxHandler handler(std::move(order_book_update_callback), std::move(trade_callback));
+    static rapidjson::Reader reader;
+    static CombinedSaxHandler handler;
+
+    handler.Reset();
     rapidjson::MemoryStream ms(json.data(), json.size());
-    rapidjson::Reader reader;
-    if (!reader.Parse(ms, handler)) {
+    if (reader.Parse(ms, handler) && handler.HaveStream() && handler.SawData()) {
+        handler.Release(order_book_update_callback, trade_callback);
+        return true;
+    } else {
         return false;
     }
-    return handler.HaveStream() && handler.SawData();
 }
 
 }  // namespace hft
