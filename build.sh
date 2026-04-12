@@ -51,6 +51,8 @@ HFT_SLICE_UNIT="hft.slice"
 SYSTEM_SLICE_DROPIN_DIR="system.slice.d"
 USER_SLICE_DROPIN_DIR="user.slice.d"
 NON_HFT_CPUS_CONF="non-hft-cpus.conf"
+IRQ_AFFINITY_SCRIPT="irq-affinity.sh"
+IRQ_AFFINITY_SERVICE="irq-affinity.service"
 
 # ============================================
 # FUNCTIONS
@@ -145,6 +147,26 @@ copy_configs() {
         chown root:root "$TARGET_SYSTEMD_DIR/$non_hft_slice_d/$NON_HFT_CPUS_CONF"
         log_info "  → $non_hft_slice_d/$NON_HFT_CPUS_CONF copied"
     done
+
+    if [[ -f "$CONFIG_DIR/$IRQ_AFFINITY_SCRIPT" ]]; then
+        cp "$CONFIG_DIR/$IRQ_AFFINITY_SCRIPT" "$INSTALL_CONF_DIR/$IRQ_AFFINITY_SCRIPT"
+        chmod 750 "$INSTALL_CONF_DIR/$IRQ_AFFINITY_SCRIPT"
+        chown root:root "$INSTALL_CONF_DIR/$IRQ_AFFINITY_SCRIPT"
+        log_info "  → $IRQ_AFFINITY_SCRIPT copied to $INSTALL_CONF_DIR/"
+    else
+        log_warn "$IRQ_AFFINITY_SCRIPT not found: $CONFIG_DIR/$IRQ_AFFINITY_SCRIPT"
+        exit 1
+    fi
+
+    if [[ -f "$CONFIG_DIR/$IRQ_AFFINITY_SERVICE" ]]; then
+        cp "$CONFIG_DIR/$IRQ_AFFINITY_SERVICE" "$TARGET_SYSTEMD_DIR/$IRQ_AFFINITY_SERVICE"
+        chmod 644 "$TARGET_SYSTEMD_DIR/$IRQ_AFFINITY_SERVICE"
+        chown root:root "$TARGET_SYSTEMD_DIR/$IRQ_AFFINITY_SERVICE"
+        log_info "  → $IRQ_AFFINITY_SERVICE copied"
+    else
+        log_warn "$IRQ_AFFINITY_SERVICE not found: $CONFIG_DIR/$IRQ_AFFINITY_SERVICE"
+        exit 1
+    fi
 
     if [[ -f "$CONFIG_DIR/$LOGROTATE_CONFIG" ]]; then
         cp "$CONFIG_DIR/$LOGROTATE_CONFIG" "$TARGET_LOGROTATE_DIR/"
@@ -243,6 +265,12 @@ deploy() {
     # 5. Start services
     systemctl daemon-reload
 
+    log_info "  → Enabling and running $IRQ_AFFINITY_SERVICE (IRQ affinity, irqbalance, RPS/XPS)..."
+    systemctl enable "$IRQ_AFFINITY_SERVICE"
+    if ! systemctl start "$IRQ_AFFINITY_SERVICE"; then
+        log_warn "$IRQ_AFFINITY_SERVICE start failed (see journalctl -u $IRQ_AFFINITY_SERVICE)"
+    fi
+
     for service_name in "${SERVICE_NAMES[@]}"; do
         log_info "  → Starting service $service_name..."
         systemctl enable "$service_name"
@@ -273,6 +301,12 @@ do_deploy() {
             systemctl status "$service_name" --no-pager
         fi
     done
+
+    if systemctl is-active --quiet "$IRQ_AFFINITY_SERVICE"; then
+        log_success "Service $IRQ_AFFINITY_SERVICE is active (oneshot, RemainAfterExit)"
+    else
+        log_warn "Service $IRQ_AFFINITY_SERVICE is not active"
+    fi
 }
 
 run_tests() {
