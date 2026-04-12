@@ -193,7 +193,7 @@ build_applications() {
     cd "$BUILD_DIR"
 
     log_info "  → running cmake..."
-    cmake "$SRC_DIR"
+    cmake "$SRC_DIR" -DCMAKE_BUILD_TYPE=Release
 
     log_info "  → compiling..."
     make
