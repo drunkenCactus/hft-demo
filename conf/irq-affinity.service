@@ -1,0 +1,12 @@
+[Unit]
+Description=HFT: IRQ affinity to non-HFT CPUs, disable irqbalance, RPS/XPS off
+After=network.target
+Wants=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/opt/hft/conf/irq-affinity.sh
+
+[Install]
+WantedBy=multi-user.target
