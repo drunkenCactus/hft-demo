@@ -16,8 +16,6 @@ StandardError=journal
 SyslogIdentifier=hft-executor
 LimitCORE=infinity
 LimitMEMLOCK=infinity
-Slice=hft.slice
-CPUAffinity=6
 
 [Install]
 WantedBy=multi-user.target
