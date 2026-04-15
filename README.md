@@ -75,7 +75,7 @@ To reduce jitter on the hot path, the optional OS-level profile (`conf/hw_tuning
 - keeps the rest of the system off those CPUs (via `system.slice` / `user.slice` `AllowedCPUs`)
 - steers IRQs away from the hot-path CPUs (`irq-affinity.sh` writes `smp_affinity_list` for numeric IRQs; `irqbalance` is stopped)
 
-The profile targets a dual-socket machine with 32 logical CPUs, typical of 2× Xeon E5-2660 (8 physical cores and 16 logical threads per socket with Hyper-Threading). `hft.slice` reserves logical CPUs **4–7** and **20–23** (the latter are typically the HT siblings of 4–7; the exact mapping depends on the kernel’s enumeration). Per-service pinning is in `conf/hw_tuning/overrides/*.conf`. The profile assumes the NIC and these CPUs land on the same NUMA node as on the reference bare-metal host; re-tune if your topology differs.
+The profile targets a dual-socket machine with 32 logical CPUs, typical of 2 × Xeon E5-2660 (8 physical cores and 16 logical threads per socket with Hyper-Threading). `hft.slice` reserves logical CPUs 4-7 and 20-23 (the latter are typically the HT siblings of 4-7; the exact mapping depends on the kernel’s enumeration). Per-service pinning is in `conf/hw_tuning/overrides/*.conf`. The profile assumes the NIC and these CPUs land on the same NUMA node as on the reference bare-metal host; re-tune if your topology differs.
 
 See `apply_hw_tuning.sh` for how slices, overrides, and the IRQ script are installed.
 
